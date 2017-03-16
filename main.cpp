@@ -1,6 +1,5 @@
 #include "mbed.h"
 #include "rtos.h"
-#include <string>
 #include "PID.h"
 
 //PID controller configuration
@@ -30,7 +29,7 @@ Thread VPIDthread;
 #define L3Hpin D10          //0x20
 
 //Define sized for command arrays
-#define ARRAYSIZE 8
+#define ARRAYSIZE 49
 
 //Mapping from sequential drive states to motor phase outputs
 /*
@@ -94,7 +93,6 @@ int8_t intState = 0;
 int8_t intStateOld = 0;
 int8_t position = 0;
 
-int8_t i=0;
 int8_t quadraturePosition=0;
 bool spinCW=0;
 
@@ -211,12 +209,54 @@ void pwnFreqTime(float freq, int8_t time){
     singpin.write(1.0);
 }
 
-// Just runs the motor 
+// Just runs the motor
 void singSpinMotor(){
     while(true){
         singMotorOut(readMotorState());
         Thread::wait(5);
     }
+}
+
+//Converts char array from start to end into float
+float charsToFloat(char* commandbuffer, int8_t start, int8_t end){
+    int8_t isPositive = 1;
+
+    float partDecimal = 0.0;
+    float partWhole = 0.0;
+
+    int8_t indexDecimal = end;
+
+    if (commandbuffer[start]  == '-'){
+        isPositive = -1;
+        start--;
+    }
+
+    if (commandbuffer[end - 1] == '.'){
+        indexDecimal = end - 1;
+        partDecimal = (commandbuffer[end] - '0')/10.0f;
+    }
+
+    else if (commandbuffer[end - 2] == '.'){
+        indexDecimal = end - 2;
+        partDecimal = (commandbuffer[end - 1] - '0')/10.0f + (commandbuffer[end ] - '0')/100.0f;
+    }
+
+    else {
+
+    }
+
+
+
+    if(isDecimal){
+
+    }
+
+    else {
+
+    }
+
+    return (partWhole + partDecimal) * isNegative;
+
 }
 
 //Main function
@@ -232,13 +272,14 @@ int main()
 
     pc.printf("Rotor origin: %x\n\r",orState);
 
+    // Input buffer
     char command[ARRAYSIZE];
-    int8_t index=0;
-    int8_t units = 0, tens = 0, decimals = 0;
-    char ch;
-    int8_t vartens = 0, varunits = 0, vardecs = 0;
-    int8_t hdrds = 0;
-    float bias = 0;
+    // For tracking input and output.
+    int index = -1;
+    int indexV = -1;
+    int indexR = -1;
+    int i = 0;
+    bool found = false;
 
     speedTimer.reset();
     speedTimer.start();
@@ -259,8 +300,10 @@ int main()
         //If there's a character to read from the serial port
         if (pc.readable()) {
 
-            //Clear index counter and control variables
+            //Clear counters
             index = 0;
+            indexV = -1;
+            indexR = -1;
 
             //Read each value from the serial port until Enter key is pressed
             do {
@@ -269,9 +312,23 @@ int main()
                 //Print character to serial for visual feedback
                 pc.putc(ch);
                 //Add character to input array
-                command[index++]=ch;  // put it into the value array and increment the index
+                command[index++] = ch;  // put it into the value array and increment the index
                 //d10 and d13 used for detecting Enter key on Windows/Unix/Mac
             } while(ch != 10 && ch != 13);
+
+            index--;
+
+            // Detect location of V
+            i = 0;
+            found = false;
+
+            while(i <= index && !found){
+                if(command[i] == 'V'){
+                    found = true;
+                    indexV = i;
+                }
+                i++;
+            }
 
             //Start new line on terminal for printing data
             pc.putc('\n');
@@ -279,6 +336,37 @@ int main()
 
             //Analyse the input string
             switch (command[0]) {
+                desiredSpeedThread.terminate();
+                motorStop();
+                // Only V
+                case 'V':
+                    desiredSpeedValue = charsToFloat(command, 1, index-1);
+                    desiredSpeedThread.start(desiredSpeedFunction);
+                    break;
+                case 'R':
+                    // V also exists
+                    if (indexV < index){
+                        desiredRevolutions = charstoFloat(command, 1, indexV - 1);
+                        desiredSpeedValue = charstoFloat(command, indexV + 1, index - 1);
+                    }
+                    // Only R
+                    else{
+                        desiredSpeedValue = charstoFloat(command, 1, index - 1);
+                        rotateRevolutions();
+                    }
+                    break;
+                case 'T':
+                    listNotes = charstoNotes(command, 1, index - 1);
+                    break;
+                default:
+                    //Set speed variables to zero to stop motor spinning
+                    //Print error message
+                    motorStop();
+                    pc.printf("Error in received data 0.\n\r");
+                    break;
+
+
+
                     //If a V was typed...
                 case 'V':
                     hdrds = 0, units = 0, tens = 0, decimals = 0;
@@ -438,6 +526,10 @@ int main()
                     pc.printf("Error in received data 0\n\r");
                     motorStop();
                     break;
+            }
+
+            for(index = 0; index < 49; i++){
+              command[index] = 0;
             }
         }
         wait(0.01);
