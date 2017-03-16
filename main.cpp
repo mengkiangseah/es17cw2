@@ -4,33 +4,33 @@
 #include "PID.h"
 
 //PID controller configuration
-float PIDrate = 0.2;
-float Kc = 10.0;
-float Ti = 3.0;
-float Td = 0;
-float speedControl = 0;
-PID controller(Kc, Ti, Td, PIDrate);
-Thread VPIDthread;
+// float PIDrate = 0.2;
+// float Kc = 10.0;
+// float Ti = 3.0;
+// float Td = 0;
+// float speedControl = 0;
+// PID controller(Kc, Ti, Td, PIDrate);
+// Thread VPIDthread;
 
 //Photointerrupter input pins
-#define I1pin D2
-#define I2pin D11
-#define I3pin D12
+// #define I1pin D2
+// #define I2pin D11
+// #define I3pin D12
 
-//Incremental encoder input pins
-#define CHA   D7
-#define CHB   D8
+// //Incremental encoder input pins
+// #define CHA   D7
+// #define CHB   D8
 
-//Motor Drive output pins   //Mask in output byte
-#define L1Lpin D4           //0x01
-#define L1Hpin D5           //0x02
-#define L2Lpin D3           //0x04
-#define L2Hpin D6           //0x08
-#define L3Lpin D9           //0x10
-#define L3Hpin D10          //0x20
+// //Motor Drive output pins   //Mask in output byte
+// #define L1Lpin D4           //0x01
+// #define L1Hpin D5           //0x02
+// #define L2Lpin D3           //0x04
+// #define L2Hpin D6           //0x08
+// #define L3Lpin D9           //0x10
+// #define L3Hpin D10          //0x20
 
-//Define sized for command arrays
-#define ARRAYSIZE 8
+// //Define sized for command arrays
+// #define ARRAYSIZE 8
 
 //Mapping from sequential drive states to motor phase outputs
 /*
@@ -61,17 +61,17 @@ const int8_t FastStateCW[7] = {0x00, 0x32, 0x2C, 0x38, 0x0B, 0x23, 0x0E};
 const int8_t FastStateACW[7] = {0x00, 0x2C, 0x0B, 0x0E, 0x32, 0x38, 0x23};
 
 //Photointerrupter inputs
-DigitalIn I1(I1pin);
-DigitalIn I2(I2pin);
-InterruptIn I3(I3pin);
+// DigitalIn I1(I1pin);
+// DigitalIn I2(I2pin);
+// InterruptIn I3(I3pin);
 
 //Motor Drive outputs
-DigitalOut clk(LED1);
+// DigitalOut clk(LED1);
 
 //NOTE, BusOut declares things in reverse (ie, 0, 1, 2, 3) compared to binary represenation
 //BusOut motor(L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
 //PwmOut singpin(L1Lpin);
-BusOut motor(L1Lpin, L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
+// BusOut motor(L1Lpin, L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
 
 
 //Timeout function for rotating at set speed
@@ -115,83 +115,83 @@ bool spinCW=0;
 //}
 
 //Set a given drive state
-void motorOut(int8_t driveState)
-{
-    motor = 0x2A;
+// void motorOut(int8_t driveState)
+// {
+//     motor = 0x2A;
 
-    if(!spinCW) {
-        motor = AcwState[driveState];
-    } else {
-        motor = cwState[driveState];
-    }
-}
+//     if(!spinCW) {
+//         motor = AcwState[driveState];
+//     } else {
+//         motor = cwState[driveState];
+//     }
+// }
 
-inline void motorStop()
-{
-    //revsec set to zero prevents recurring interrupt for constant speed
-    revsec = 0;
-    wait(spinWait);
-    //0x2A turns all motor transistors off to prevent any power usage
-    motor = (0x2A>>1);
-    singpin = 0;
-}
+// inline void motorStop()
+// {
+//     //revsec set to zero prevents recurring interrupt for constant speed
+//     revsec = 0;
+//     wait(spinWait);
+//     //0x2A turns all motor transistors off to prevent any power usage
+//     motor = (0x2A>>1);
+//     singpin = 0;
+// }
 
-//Convert photointerrupter inputs to a rotor state
-inline int8_t readRotorState()
-{
-    return (I1 + I2<<1 + I3<<2);
-}
+// //Convert photointerrupter inputs to a rotor state
+// inline int8_t readRotorState()
+// {
+//     return (I1 + I2<<1 + I3<<2);
+// }
 
-//Basic synchronisation routine
-int8_t motorHome()
-{
-    //Put the motor in drive state 0 and wait for it to stabilise
-    motor=cwState[1];
-//    motorOut(1);
-    wait(1.0);
+// //Basic synchronisation routine
+// int8_t motorHome()
+// {
+//     //Put the motor in drive state 0 and wait for it to stabilise
+//     motor=cwState[1];
+// //    motorOut(1);
+//     wait(1.0);
 
-    position = 0;
-    motorStop();
-    //Get the rotor state
-    return readRotorState();
-}
+//     position = 0;
+//     motorStop();
+//     //Get the rotor state
+//     return readRotorState();
+// }
 
-void fixedSpeed()
-{
-    //If spinning is required, attach the necessary wait to the
-    //timeout interrupt to call this function again and
-    //keep the motor spinning at the right speed
+// void fixedSpeed()
+// {
+//     //If spinning is required, attach the necessary wait to the
+//     //timeout interrupt to call this function again and
+//     //keep the motor spinning at the right speed
 
 
-    intState = readRotorState();
-    //Increment state machine to next state
-    motorOut(intState);
+//     intState = readRotorState();
+//     //Increment state machine to next state
+//     motorOut(intState);
 
-//    motorOut(I1 + I2<<1 + I3<<2);
-    if(revsec) spinTimer.attach(&fixedSpeed, spinWait);
+// //    motorOut(I1 + I2<<1 + I3<<2);
+//     if(revsec) spinTimer.attach(&fixedSpeed, spinWait);
 
-}
+// }
 
-void rps()
-{
-    speedTimer.stop();
-    revtimer = speedTimer.read_ms();
-    speedTimer.reset();
-    speedTimer.start();
+// void rps()
+// {
+//     speedTimer.stop();
+//     revtimer = speedTimer.read_ms();
+//     speedTimer.reset();
+//     speedTimer.start();
 
-    measuredRevs = 1000/(revtimer);
-    quadraturePosition=0;
-}
+//     measuredRevs = 1000/(revtimer);
+//     quadraturePosition=0;
+// }
 
-void VPID()
-{
-    while(1) {
-        controller.setProcessValue(measuredRevs);
-        speedControl = controller.compute();
-        spinWait = (1/(speedControl*6));
-        Thread::wait(PIDrate);
-    }
-}
+// void VPID()
+// {
+//     while(1) {
+//         controller.setProcessValue(measuredRevs);
+//         speedControl = controller.compute();
+//         spinWait = (1/(speedControl*6));
+//         Thread::wait(PIDrate);
+//     }
+// }
 
 //Set a given drive state
 void singMotorOut(int8_t driveState){
@@ -240,19 +240,19 @@ int main()
     int8_t hdrds = 0;
     float bias = 0;
 
-    speedTimer.reset();
-    speedTimer.start();
+    // speedTimer.reset();
+    // speedTimer.start();
     I3.mode(PullNone);
     I3.rise(&rps);
 
     singpin.period_us(100);
 
-    VPIDthread.start(VPID);
+    // VPIDthread.start(VPID);
     pc.printf("%d", VPIDthread.get_priority());
-    VPIDthread.set_priority(osPriorityAboveNormal);
+    // VPIDthread.set_priority(osPriorityAboveNormal);
 
-    controller.setInterval(PIDrate);
-    controller.setMode(0);
+    // controller.setInterval(PIDrate);
+    // controller.setMode(0);
 
     while(1) {
 
