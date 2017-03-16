@@ -2,6 +2,9 @@
 //Pin assignment declarations
 //***************************************************
 
+
+//NOT ACCOMMODATING THAT ONE (D9) CANNOT BE PWM OUT
+
 //Photointerrupter input pins
 #define I1pin D2
 #define I2pin D11
@@ -23,7 +26,7 @@
 //Function for reading the photointerrupter states
 //***************************************************
 
-//One input at least will need to be an InterruptIn for rps function
+//One input at least will need to be an InterruptIn for rps functions
 DigitalIn I1(I1pin);
 DigitalIn I2(I2pin);
 DigitalIn I3(I3pin);
@@ -51,11 +54,13 @@ inline void motorStop()
 //Function for calculating the rotational velocity of the motor
 //***************************************************
 
-int8_t CWLow[6] = {2, 2, 1, 1, 4, 4};
-int8_t CWHigh[6] = {2, 2, 1, 1, 4, 4};
+int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+int8_t CWHigh[6] = {0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
 
-int8_t ACWLow[6] = {4, 1, 1, 2, 2, 4};
-int8_t ACWHigh[6] = {5, 5, 3, 3, 6, 6};
+int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
+
+bool spinCW = True;
 
 //DEPENDS ON HOW WE IMPLEMENT THE MOTOR CONTROL PINS
 void motorOut(int8_t driveState)
@@ -208,11 +213,11 @@ float distanceTarget = 0.0;
 int8_t countRevs = 0;
 
 //PID controller output
-float distanceOutput = 0.0;
+// float distanceOutput = 0.0;
 float distanceLimit = 5.0;
 
 //Wait value for fixed speed operation
-float fixeddistanceWait = 0;
+// float fixeddistanceWait = 0;
 
 //Initialise PID controller
 PID distanceController(distanceKc, distanceTi, distanceTd, distancePIDrate);
