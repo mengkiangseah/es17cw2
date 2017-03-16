@@ -1,6 +1,6 @@
 #include "mbed.h"
-#include "rtos.h"
-#include "PID.h"
+// #include "rtos.h"
+// #include "PID.h"
 
 //PID controller configuration
 // float PIDrate = 0.2;
@@ -53,12 +53,12 @@ State   L1  L2  L3
 //Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
 //const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
 
-const int8_t cwState[7] = {0x00, 0x23, 0x38, 0x32, 0x0E, 0x0B, 0x2C};
-const int8_t AcwState[7] = {0x00, 0x0E, 0x23, 0x0B, 0x38, 0x2C, 0x32};
-
-
-const int8_t FastStateCW[7] = {0x00, 0x32, 0x2C, 0x38, 0x0B, 0x23, 0x0E};
-const int8_t FastStateACW[7] = {0x00, 0x2C, 0x0B, 0x0E, 0x32, 0x38, 0x23};
+// const int8_t cwState[7] = {0x00, 0x23, 0x38, 0x32, 0x0E, 0x0B, 0x2C};
+// const int8_t AcwState[7] = {0x00, 0x0E, 0x23, 0x0B, 0x38, 0x2C, 0x32};
+//
+//
+// const int8_t FastStateCW[7] = {0x00, 0x32, 0x2C, 0x38, 0x0B, 0x23, 0x0E};
+// const int8_t FastStateACW[7] = {0x00, 0x2C, 0x0B, 0x0E, 0x32, 0x38, 0x23};
 
 //Photointerrupter inputs
 // DigitalIn I1(I1pin);
@@ -75,27 +75,32 @@ const int8_t FastStateACW[7] = {0x00, 0x2C, 0x0B, 0x0E, 0x32, 0x38, 0x23};
 
 
 //Timeout function for rotating at set speed
-Timeout spinTimer;
-float spinWait = 10;
-float revsec = 0;
+// Timeout spinTimer;
+// float spinWait = 10;
+// float revsec = 0;
 
 //Variables for spinning N revolutions
-int8_t targetRevs = 0;
-int8_t currRevs = 0;
+// int8_t targetRevs = 0;
+// int8_t currRevs = 0;
 
 //Timer used for calculating speed
-Timer speedTimer;
-float measuredRevs = 0, revtimer = 0;
+// Timer speedTimer;
+// float measuredRevs = 0, revtimer = 0;
 
 Serial pc(SERIAL_TX, SERIAL_RX);
 
-int8_t orState = 0;    //Rotor offset at motor state 0
-int8_t intState = 0;
-int8_t intStateOld = 0;
-int8_t position = 0;
+// int8_t orState = 0;    //Rotor offset at motor state 0
+// int8_t intState = 0;
+// int8_t intStateOld = 0;
+// int8_t position = 0;
 
-int8_t quadraturePosition=0;
-bool spinCW=0;
+// int8_t quadraturePosition=0;
+// bool spinCW=0;
+
+// Some globals
+float desiredSpeedValue = 0.0f;
+float desiredRevolutions = 0.0f;
+float measuredVelocity = 0.0f;
 
 ////Set a given drive state
 //void motorOut(int8_t driveState)
@@ -193,104 +198,105 @@ bool spinCW=0;
 // }
 
 //Set a given drive state
-void singMotorOut(int8_t driveState){
-
-    motor = 0x2A>>1;
-    singpin = 0;
-
-    motor = (cwState[driveState]>>1);
-    singpin = float(cwState[driveState]&&0x01)/2;
-}
-
-// Takes freq and time, runs PWM at that freq for that time.
-void pwnFreqTime(float freq, int8_t time){
-    singpin.period(1.0f/freq);
-    singpin.write(0.5f);
-    wait(time);
-    singpin.write(1.0);
-}
-
-// Just runs the motor
-void singSpinMotor(){
-    while(true){
-        singMotorOut(readMotorState());
-        Thread::wait(5);
-    }
-}
+// void singMotorOut(int8_t driveState){
+//
+//     motor = 0x2A>>1;
+//     singpin = 0;
+//
+//     motor = (cwState[driveState]>>1);
+//     singpin = float(cwState[driveState]&&0x01)/2;
+// }
+//
+// // Takes freq and time, runs PWM at that freq for that time.
+// void pwnFreqTime(float freq, int8_t time){
+//     singpin.period(1.0f/freq);
+//     singpin.write(0.5f);
+//     wait(time);
+//     singpin.write(1.0);
+// }
+//
+// // Just runs the motor
+// void singSpinMotor(){
+//     while(true){
+//         singMotorOut(readMotorState());
+//         Thread::wait(5);
+//     }
+// }
 
 //Converts char array from start to end into float
-float charsToFloat(char* commandbuffer, int8_t start, int8_t end){
+float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
     int8_t isPositive = 1;
 
     float partDecimal = 0.0;
     float partWhole = 0.0;
 
-    int8_t indexDecimal = end;
+    // By default, indexDecimal after the last char
+    int8_t indexDecimal = end + 1;
 
-    if (commandbuffer[start]  == '-'){
+    // If first char is negative, set isPositive flag, and remove the - from
+    // consideration.
+    if (commandBuffer[start]  == '-'){
         isPositive = -1;
-        start--;
+        start++;
     }
 
-    if (commandbuffer[end - 1] == '.'){
+    // Decimal point either second last, or third last char.
+    if (commandBuffer[end - 1] == '.'){
         indexDecimal = end - 1;
-        partDecimal = (commandbuffer[end] - '0')/10.0f;
+        partDecimal = float(commandBuffer[end] - '0')/10.0f;
     }
 
-    else if (commandbuffer[end - 2] == '.'){
+    else if (commandBuffer[end - 2] == '.'){
         indexDecimal = end - 2;
-        partDecimal = (commandbuffer[end - 1] - '0')/10.0f + (commandbuffer[end ] - '0')/100.0f;
+        partDecimal = float(commandBuffer[end - 1] - '0')/10.0f + float(commandBuffer[end] - '0')/100.0f;
     }
 
-    else {
-
+    // In any case, indexDecimal points to after the ones digit
+    // If this case, then only ones.
+    if (start == indexDecimal - 1) {
+        partWhole = float(commandBuffer[start] - '0');
+    // Tens and ones.
+    } else if (start == indexDecimal - 2) {
+        partWhole = (float(commandBuffer[start] - '0') * 10.0f) + float(commandBuffer[start + 1] - '0');
+    // Hundreds, tens, and ones.
+    } else {
+        partWhole = (float(commandBuffer[start] - '0') * 100.0f) + (float(commandBuffer[start + 1] - '0') * 10.0f) + float(commandBuffer[start + 2] - '0');
     }
 
-
-
-    if(isDecimal){
-
-    }
-
-    else {
-
-    }
-
-    return (partWhole + partDecimal) * isNegative;
+    return (partWhole + partDecimal) * isPositive;
 
 }
 
 //Main function
 int main()
 {
-    pc.printf("spin\n\r");
-    spinWait = 0.01;
-    motorStop();
+    pc.printf("Startup!\n\r");
+    // spinWait = 0.01;
+    // motorStop();
 
     //Run the motor synchronisation
-    orState = motorHome();
+    // orState = motorHome();
     //orState is subtracted from future rotor state inputs to align rotor and motor states
 
-    pc.printf("Rotor origin: %x\n\r",orState);
+    // pc.printf("Rotor origin: %x\n\r",orState);
 
     // Input buffer
-    char command[ARRAYSIZE];
+    char command[ARRAYSIZE] = {0};
+    char ch;
     // For tracking input and output.
-    int index = -1;
-    int indexV = -1;
-    int indexR = -1;
-    int i = 0;
+    int index = 0;
+    int indexV = 0;
     bool found = false;
 
     // speedTimer.reset();
     // speedTimer.start();
-    I3.mode(PullNone);
-    I3.rise(&rps);
+    // I3.mode(PullNone);
+    // I3.rise(&rps);
 
-    singpin.period_us(100);
+    // singpin.period_us(100);
 
     // VPIDthread.start(VPID);
-    pc.printf("%d", VPIDthread.get_priority());
+    // pc.printf("%d", VPIDthread.get_priority());
     // VPIDthread.set_priority(osPriorityAboveNormal);
 
     // controller.setInterval(PIDrate);
@@ -303,8 +309,6 @@ int main()
 
             //Clear counters
             index = 0;
-            indexV = -1;
-            indexR = -1;
 
             //Read each value from the serial port until Enter key is pressed
             do {
@@ -317,19 +321,24 @@ int main()
                 //d10 and d13 used for detecting Enter key on Windows/Unix/Mac
             } while(ch != 10 && ch != 13);
 
+            // 10 and 13 are basically EOL symbols
+            // index points to after EOL, so decrement to point to EOL
             index--;
 
-            // Detect location of V
-            i = 0;
+            // Detect location of V, if at all.
+            indexV = 0;
             found = false;
 
-            while(i <= index && !found){
-                if(command[i] == 'V'){
+            while(indexV <= index && !found){
+                if(command[indexV] == 'V'){
                     found = true;
-                    indexV = i;
                 }
-                i++;
+                indexV++;
             }
+            // IndexV ends one more than index of V if V exists
+            // OR ends at index+1, which in this case is after EOL. Decrement.
+            indexV--;
+            // IndexV is now V, or EOL.
 
             //Start new line on terminal for printing data
             pc.putc('\n');
@@ -337,199 +346,44 @@ int main()
 
             //Analyse the input string
             switch (command[0]) {
-                desiredSpeedThread.terminate();
-                motorStop();
+                // Commands to kill all threads
+                // Reset all values to zero
+
                 // Only V
                 case 'V':
-                    desiredSpeedValue = charsToFloat(command, 1, index-1);
-                    desiredSpeedThread.start(desiredSpeedFunction);
+                    // index is EOL, index - 1 is last char
+                    desiredSpeedValue = charsToFloat(command, 1, index - 1);
                     break;
+
+                // Is R first.
                 case 'R':
-                    // V also exists
+                    // V also exists, because indexV before index (EOL)
                     if (indexV < index){
-                        desiredRevolutions = charstoFloat(command, 1, indexV - 1);
-                        desiredSpeedValue = charstoFloat(command, indexV + 1, index - 1);
+                        desiredRevolutions = charsToFloat(command, 1, indexV - 1);
+                        desiredSpeedValue = charsToFloat(command, indexV + 1, index - 1);
                     }
                     // Only R
-                    else{
-                        desiredSpeedValue = charstoFloat(command, 1, index - 1);
-                        rotateRevolutions();
+                    else {
+                        desiredRevolutions = charsToFloat(command, 1, index - 1);
                     }
                     break;
+                // Needs to sing
                 case 'T':
-                    listNotes = charstoNotes(command, 1, index - 1);
+//                    listNotes = charstoNotes(command, 1, index - 1);
                     break;
+                // If something weird comes along.
                 default:
-                    //Set speed variables to zero to stop motor spinning
-                    //Print error message
-                    motorStop();
-                    pc.printf("Error in received data 0.\n\r");
-                    break;
-
-
-
-                    //If a V was typed...
-                case 'V':
-                    hdrds = 0, units = 0, tens = 0, decimals = 0;
-                    //For each character received, subtract ASCII 0 from ASCII
-                    //representation to obtain the integer value of the number
-                    if(command[1]=='-') {
-                        spinCW = 0;
-                        //If decimal point is in the second character (eg, V-.1)
-                        if(command[2]=='.') {
-                            //Extract decimal rev/s
-                            decimals = command[3] - '0';
-
-                            //If decimal point is in the third character (eg, V-0.1)
-                        } else if(command[3]=='.') {
-                            units = command[2] - '0';
-                            decimals = command[4] - '0';
-
-                            //If decimal point is in the fourth character (eg, V-10.1)
-                        } else if(command[4]=='.') {
-                            tens = command[2] - '0';
-                            units = command[3] - '0';
-                            decimals = command[5] - '0';
-                        } else if(command[4]=='.') {
-                            hdrds = command[1] - '0';
-                            tens = command[2] - '0';
-                            units = command[3] - '0';
-                            decimals = command[5] - '0';
-                        }
-                    } else {
-                        spinCW = 1;
-                        //If decimal point is in the second character (eg, V.1)
-                        if(command[1]=='.') {
-                            //Extract decimal rev/s
-                            decimals = command[2] - '0';
-
-                            //If decimal point is in the third character (eg, V0.1)
-                        } else if(command[2]=='.') {
-                            units = command[1] - '0';
-                            decimals = command[3] - '0';
-
-                            //If decimal point is in the fourth character (eg, V10.1)
-                        } else if(command[3]=='.') {
-                            tens = command[1] - '0';
-                            units = command[2] - '0';
-                            decimals = command[4] - '0';
-                        } else if(command[4]=='.') {
-                            hdrds = command[1] - '0';
-                            tens = command[2] - '0';
-                            units = command[3] - '0';
-                            decimals = command[5] - '0';
-                        }
-                    }
-
-                    //Calculate the number of revolutions per second required
-                    revsec = float(hdrds)*100 + float(tens)*10 + float(units) + float(decimals)/10;
-                    //Calculate the required wait period
-
-                    spinWait = (1/revsec)/6;
-                    controller.setSetPoint(revsec);
-                    //Print values for verification
-                    pc.printf("Rev/S: %2.4f\n\r", revsec);
-
-                    //Run the function to start rotating at a fixed speed
-                    fixedSpeed();
-                    break;
-                    //If anything unexpected was received
-
-                case 's':
-                    printf("Measured: %2.3f, revsec: %2.3f\r\n", measuredRevs, revsec);
-                    printf("PID: %2.3f\r\n", speedControl);
-                    break;
-
-                case 'K':
-                    vartens = command[1] - '0';
-                    varunits = command[2] - '0';
-                    vardecs = command[4] - '0';
-                    Kc = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-                    printf("Kc: %2.1f\r\n", Kc);
-                    controller.setTunings(Kc, Ti, Td);
-                    break;
-                case 'i':
-                    vartens = command[1] - '0';
-                    varunits = command[2] - '0';
-                    vardecs = command[4] - '0';
-                    Ti = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-                    printf("Ti: %2.1f\r\n", Ti);
-                    controller.setTunings(Kc, Ti, Td);
-                    break;
-                case 'd':
-                    vartens = command[1] - '0';
-                    varunits = command[2] - '0';
-                    vardecs = command[4] - '0';
-                    Td = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-                    printf("Td: %2.1f\r\n", Td);
-                    controller.setTunings(Kc, Ti, Td);
-                    break;
-                case 'P':
-                    vartens = command[1] - '0';
-                    varunits = command[2] - '0';
-                    vardecs = command[4] - '0';
-                    PIDrate = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-                    controller.setInterval(PIDrate);
-                    controller.setMode(1);
-                    printf("Rate: %2.1f\r\n", PIDrate);
-                case 'b':
-                    if(command[1]=='.') {
-                        //Extract decimal rev/s
-                        vardecs = command[2] - '0';
-
-                        //If decimal point is in the third character (eg, V-0.1)
-                    } else if(command[2]=='.') {
-                        varunits = command[1] - '0';
-                        vardecs = command[3] - '0';
-
-                        //If decimal point is in the fourth character (eg, V-10.1)
-                    } else if(command[3]=='.') {
-                        vartens = command[1] - '0';
-                        varunits = command[2] - '0';
-                        vardecs = command[4] - '0';
-                    }
-                    bias = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-                    printf("Bias: %2.1f\r\n", bias);
-                    controller.setBias(bias);
-                    break;
-
-                case 'T':
-                    hdrds = 0, units = 0, tens = 0, decimals = 0;
-
-                    //If decimal point is in the second character (eg, V.1)
-                    if(command[1]=='.') {
-                        //Extract decimal rev/s
-                        decimals = command[2] - '0';
-
-                        //If decimal point is in the third character (eg, V0.1)
-                    } else if(command[2]=='.') {
-                        units = command[1] - '0';
-                        decimals = command[3] - '0';
-
-                        //If decimal point is in the fourth character (eg, V10.1)
-                    } else if(command[3]=='.') {
-                        tens = command[1] - '0';
-                        units = command[2] - '0';
-                        decimals = command[4] - '0';
-                    } else if(command[4]=='.') {
-                        hdrds = command[1] - '0';
-                        tens = command[2] - '0';
-                        units = command[3] - '0';
-                        decimals = command[5] - '0';
-                    }
-                    singpin.period_us(float(hdrds)*100 + float(tens)*10 + float(units) + float(decimals)/10);
-                    break;
-
-                default:
-                    //Set speed variables to zero to stop motor spinning
-                    //Print error message
-                    motorStop();
-                    pc.printf("Error in received data 0\n\r");
-                    motorStop();
+                    // Commands to kill all threads
+                    // Reset all values to zero
+                    pc.printf("Error in received data.\n\r");
                     break;
             }
 
-            for(index = 0; index < 49; i++){
+            pc.printf("desiredSpeed: %3.2f ", desiredSpeedValue);
+            pc.printf(" desiredRevolutions: %3.2f\n\n", desiredRevolutions);
+
+            // Clear buffer
+            for(index = 0; index < 49; index++){
               command[index] = 0;
             }
         }
@@ -537,3 +391,91 @@ int main()
     }
 
 }
+
+// case 's':
+//     printf("Measured: %2.3f, revsec: %2.3f\r\n", measuredRevs, revsec);
+//     printf("PID: %2.3f\r\n", speedControl);
+//     break;
+//
+// case 'K':
+//     vartens = command[1] - '0';
+//     varunits = command[2] - '0';
+//     vardecs = command[4] - '0';
+//     Kc = float(vartens)*10 + float(varunits) + float(vardecs)/10;
+//     printf("Kc: %2.1f\r\n", Kc);
+//     controller.setTunings(Kc, Ti, Td);
+//     break;
+//
+// case 'i':
+//     vartens = command[1] - '0';
+//     varunits = command[2] - '0';
+//     vardecs = command[4] - '0';
+//     Ti = float(vartens)*10 + float(varunits) + float(vardecs)/10;
+//     printf("Ti: %2.1f\r\n", Ti);
+//     controller.setTunings(Kc, Ti, Td);
+//     break;
+//
+// case 'd':
+//     vartens = command[1] - '0';
+//     varunits = command[2] - '0';
+//     vardecs = command[4] - '0';
+//     Td = float(vartens)*10 + float(varunits) + float(vardecs)/10;
+//     printf("Td: %2.1f\r\n", Td);
+//     controller.setTunings(Kc, Ti, Td);
+//     break;
+//
+// case 'P':
+//     vartens = command[1] - '0';
+//     varunits = command[2] - '0';
+//     vardecs = command[4] - '0';
+//     PIDrate = float(vartens)*10 + float(varunits) + float(vardecs)/10;
+//     controller.setInterval(PIDrate);
+//     controller.setMode(1);
+//     printf("Rate: %2.1f\r\n", PIDrate);
+//
+// case 'b':
+//     if(command[1]=='.') {
+//         //Extract decimal rev/s
+//         vardecs = command[2] - '0';
+//
+//         //If decimal point is in the third character (eg, V-0.1)
+//     } else if(command[2]=='.') {
+//         varunits = command[1] - '0';
+//         vardecs = command[3] - '0';
+//
+//         //If decimal point is in the fourth character (eg, V-10.1)
+//     } else if(command[3]=='.') {
+//         vartens = command[1] - '0';
+//         varunits = command[2] - '0';
+//         vardecs = command[4] - '0';
+//     }
+//     bias = float(vartens)*10 + float(varunits) + float(vardecs)/10;
+//     printf("Bias: %2.1f\r\n", bias);
+//     controller.setBias(bias);
+//     break;
+//
+// case 'T':
+//     hdrds = 0, units = 0, tens = 0, decimals = 0;
+//
+//     //If decimal point is in the second character (eg, V.1)
+//     if(command[1]=='.') {
+//         //Extract decimal rev/s
+//         decimals = command[2] - '0';
+//
+//         //If decimal point is in the third character (eg, V0.1)
+//     } else if(command[2]=='.') {
+//         units = command[1] - '0';
+//         decimals = command[3] - '0';
+//
+//         //If decimal point is in the fourth character (eg, V10.1)
+//     } else if(command[3]=='.') {
+//         tens = command[1] - '0';
+//         units = command[2] - '0';
+//         decimals = command[4] - '0';
+//     } else if(command[4]=='.') {
+//         hdrds = command[1] - '0';
+//         tens = command[2] - '0';
+//         units = command[3] - '0';
+//         decimals = command[5] - '0';
+//     }
+//     break;
