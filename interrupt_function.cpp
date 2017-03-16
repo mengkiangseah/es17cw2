@@ -30,29 +30,48 @@ DigitalIn I3(I3pin);
 
 inline int8_t readRotorState()
 {
-    return (I1 + I2<<1 + I3<<2);
+	return (I1 + I2<<1 + I3<<2);
 }
 
 //***************************************************
 //Universal function to stop the motor (non-braking)
 //***************************************************
 
+BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
+BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
+
 //DEPENDS ON HOW WE IMPLEMENT THE MOTOR CONTROL PINS
 inline void motorStop()
 {
-
+	motorLow = 0x0;
+	motorHigh = 0x7;
 }
 
 //***************************************************
 //Function for calculating the rotational velocity of the motor
 //***************************************************
 
+int8_t CWLow[6] = {2, 2, 1, 1, 4, 4};
+int8_t CWHigh[6] = {2, 2, 1, 1, 4, 4};
+
+int8_t ACWLow[6] = {4, 1, 1, 2, 2, 4};
+int8_t ACWHigh[6] = {5, 5, 3, 3, 6, 6};
+
 //DEPENDS ON HOW WE IMPLEMENT THE MOTOR CONTROL PINS
 void motorOut(int8_t driveState)
 {
 	//Switch off all transistors to prevent shoot-through
+	motorLow = 0x0;
+	motorHigh = 0x7;
 
 	//Assign new values to motor output
+	if(spinCW){
+		motorLow = CWLow[driveState];
+		motorHigh = CWHigh[driveState];
+	} else {
+		motorLow = ACWLow[driveState];
+		motorHigh = ACWHigh[driveState];
+	}
 }
 
 //***************************************************
@@ -62,6 +81,7 @@ void motorOut(int8_t driveState)
 InterruptIn PIN;
 Timer speedTimer;
 float revTimer = 0;
+float measuredSpeed = 0;
 
 
 PIN.rise(&rps);
@@ -134,10 +154,10 @@ PIDthread.set_priority(osPriorityAboveNormal);
 
 void VPID()
 {
-    while(1) {
-        speedController.setProcessValue(measuredSpeed);
-        speedOutput = speedController.compute();
-        fixedSpeedWait = (1/(speedOutput*6));
-        Thread::wait(PIDrate);
-    }
+	while(1) {
+		speedController.setProcessValue(measuredSpeed);
+		speedOutput = speedController.compute();
+		fixedSpeedWait = (1/(speedOutput*6));
+		Thread::wait(PIDrate);
+	}
 }
