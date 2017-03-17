@@ -51,11 +51,11 @@ inline void motorStop()
 //Function for calculating the rotational velocity of the motor
 //***************************************************
 
-int8_t CWLow[6] = {2, 2, 1, 1, 4, 4};
-int8_t CWHigh[6] = {2, 2, 1, 1, 4, 4};
+int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+int8_t CWHigh[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
 
-int8_t ACWLow[6] = {4, 1, 1, 2, 2, 4};
-int8_t ACWHigh[6] = {5, 5, 3, 3, 6, 6};
+int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
 
 //DEPENDS ON HOW WE IMPLEMENT THE MOTOR CONTROL PINS
 void motorOut(int8_t driveState)
@@ -284,6 +284,5 @@ PIN.rise(&quadrature_counter);
 
 void quadrature_counter()
 {
-	quadCount++;	
+	quadCount++;
 }
-
