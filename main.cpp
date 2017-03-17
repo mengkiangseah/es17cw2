@@ -11,22 +11,22 @@
 // PID controller(Kc, Ti, Td, PIDrate);
 // Thread VPIDthread;
 
-//Photointerrupter input pins
-// #define I1pin D2
-// #define I2pin D11
-// #define I3pin D12
+Photointerrupter input pins
+#define I1pin D2
+#define I2pin D11
+#define I3pin D12
 
-// //Incremental encoder input pins
-// #define CHA   D7
-// #define CHB   D8
+//Incremental encoder input pins
+#define CHA   D7
+#define CHB   D8
 
-// //Motor Drive output pins   //Mask in output byte
-// #define L1Lpin D4           //0x01
-// #define L1Hpin D5           //0x02
-// #define L2Lpin D3           //0x04
-// #define L2Hpin D6           //0x08
-// #define L3Lpin D9           //0x10
-// #define L3Hpin D10          //0x20
+//Motor Drive output pins   //Mask in output byte
+#define L1Lpin D4           //0x01
+#define L1Hpin D5           //0x02
+#define L2Lpin D3           //0x04
+#define L2Hpin D6           //0x08
+#define L3Lpin D9           //0x10
+#define L3Hpin D10          //0x20
 
 //Define sized for command arrays
 #define ARRAYSIZE 49
@@ -44,35 +44,15 @@ State   L1  L2  L3
 6       -   -   -
 7       -   -   -
 */
-//Drive state to output table
-//const int8_t driveTable[6] = {0x38, 0x2C, 0x0E, 0x0B, 0x23, 0x32};
 
-//const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
-
-
-//Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
-//const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
-
-// const int8_t cwState[7] = {0x00, 0x23, 0x38, 0x32, 0x0E, 0x0B, 0x2C};
-// const int8_t AcwState[7] = {0x00, 0x0E, 0x23, 0x0B, 0x38, 0x2C, 0x32};
-//
-//
-// const int8_t FastStateCW[7] = {0x00, 0x32, 0x2C, 0x38, 0x0B, 0x23, 0x0E};
-// const int8_t FastStateACW[7] = {0x00, 0x2C, 0x0B, 0x0E, 0x32, 0x38, 0x23};
-
-//Photointerrupter inputs
-// DigitalIn I1(I1pin);
-// DigitalIn I2(I2pin);
-// InterruptIn I3(I3pin);
-
-//Motor Drive outputs
-// DigitalOut clk(LED1);
+// Photointerrupter inputs
+DigitalIn I1(I1pin);
+DigitalIn I2(I2pin);
+InterruptIn I3(I3pin);
 
 //NOTE, BusOut declares things in reverse (ie, 0, 1, 2, 3) compared to binary represenation
-//BusOut motor(L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
-//PwmOut singpin(L1Lpin);
-// BusOut motor(L1Lpin, L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
-
+BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
+BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
 
 //Timeout function for rotating at set speed
 // Timeout spinTimer;
@@ -87,141 +67,184 @@ State   L1  L2  L3
 // Timer speedTimer;
 // float measuredRevs = 0, revtimer = 0;
 
+// For connection
 Serial pc(SERIAL_TX, SERIAL_RX);
-
-// int8_t orState = 0;    //Rotor offset at motor state 0
-// int8_t intState = 0;
-// int8_t intStateOld = 0;
-// int8_t position = 0;
-
-// int8_t quadraturePosition=0;
-// bool spinCW=0;
 
 // Some globals
 float desiredSpeedValue = 0.0f;
 float desiredRevolutions = 0.0f;
 float measuredVelocity = 0.0f;
+int8_t numberNotes = 0;
+int8_t notePointer = 0;
 
-////Set a given drive state
-//void motorOut(int8_t driveState)
-//{
-//
-//    motor = 0x2A>>1;
-//    singpin = 0;
-//
-//    if(!spinCW) {
-//        motor = (AcwState[driveState]>>1);
-//        singpin = AcwState[driveState]&&0x01;
-//    } else {
-//        motor = (cwState[driveState]>>1);
-//        singpin = cwState[driveState]&&0x01;
-//    }
-//}
+// Drive states
+int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+int8_t CWHigh[6] = {0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
 
-//Set a given drive state
-// void motorOut(int8_t driveState)
-// {
-//     motor = 0x2A;
+int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
 
-//     if(!spinCW) {
-//         motor = AcwState[driveState];
-//     } else {
-//         motor = cwState[driveState];
-//     }
-// }
+// To store notes
+int8_t [8] noteArray = {0};
+int8_t [8] timeArray = {0};
 
-// inline void motorStop()
-// {
-//     //revsec set to zero prevents recurring interrupt for constant speed
-//     revsec = 0;
-//     wait(spinWait);
-//     //0x2A turns all motor transistors off to prevent any power usage
-//     motor = (0x2A>>1);
-//     singpin = 0;
-// }
+// Mapping note to frequency
+const float[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
 
-// //Convert photointerrupter inputs to a rotor state
-// inline int8_t readRotorState()
-// {
-//     return (I1 + I2<<1 + I3<<2);
-// }
+// List of threads.
+Thread singingSpeedThread;
+Thread playsNotesThread;
 
-// //Basic synchronisation routine
-// int8_t motorHome()
-// {
-//     //Put the motor in drive state 0 and wait for it to stabilise
-//     motor=cwState[1];
-// //    motorOut(1);
-//     wait(1.0);
+// Reads the state.
+inline int8_t readRotorState(){
+	return (I1 + I2<<1 + I3<<2);
+}
 
-//     position = 0;
-//     motorStop();
-//     //Get the rotor state
-//     return readRotorState();
-// }
+// Stops motor.
+inline void motorStop(){
+	motorLow = 0x0;
+	motorHigh = 0x7;
+}
 
-// void fixedSpeed()
-// {
-//     //If spinning is required, attach the necessary wait to the
-//     //timeout interrupt to call this function again and
-//     //keep the motor spinning at the right speed
+// Sets output to next state.
+inline void motorOut(int8_t driveState){
+	//Switch off all transistors to prevent shoot-through
+    motorStop();
 
+	//Assign new values to motor output
+	if(spinCW){
+		motorLow = CWLow[driveState];
+		motorHigh = CWHigh[driveState];
+	}
 
-//     intState = readRotorState();
-//     //Increment state machine to next state
-//     motorOut(intState);
+    else {
+		motorLow = ACWLow[driveState];
+		motorHigh = ACWHigh[driveState];
+	}
+}
 
-// //    motorOut(I1 + I2<<1 + I3<<2);
-//     if(revsec) spinTimer.attach(&fixedSpeed, spinWait);
+// Function running in singingSpeedThreads, approx 4ms period per phase
+// Means 24ms, 41.6Hz
+void singingSpeed(){
+    while(1){
+        intState = readRotorState();
+        motorOut(intState);
+        Thread::wait(4.0f);
+    }
+}
 
-// }
+// Function running in playsNotesThread,
+void playNotes(){
+    while(1){
 
-// void rps()
-// {
-//     speedTimer.stop();
-//     revtimer = speedTimer.read_ms();
-//     speedTimer.reset();
-//     speedTimer.start();
+    }
+}
 
-//     measuredRevs = 1000/(revtimer);
-//     quadraturePosition=0;
-// }
+//Converts char array from start to end into float
+// Returns number of notes
+int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end){
+    // Start of first note.
+    int8_t current_ptr = start;
+    int8_t note_ptr = 0;
 
-// void VPID()
-// {
-//     while(1) {
-//         controller.setProcessValue(measuredRevs);
-//         speedControl = controller.compute();
-//         spinWait = (1/(speedControl*6));
-//         Thread::wait(PIDrate);
-//     }
-// }
+    // Clear buffers;
+    int i = 0;
+    for (i = 0; i < 8; i++) {
+        noteArray = 0;
+        timeArray = 0;
+    }
 
-//Set a given drive state
-// void singMotorOut(int8_t driveState){
-//
-//     motor = 0x2A>>1;
-//     singpin = 0;
-//
-//     motor = (cwState[driveState]>>1);
-//     singpin = float(cwState[driveState]&&0x01)/2;
-// }
-//
-// // Takes freq and time, runs PWM at that freq for that time.
-// void pwnFreqTime(float freq, int8_t time){
-//     singpin.period(1.0f/freq);
-//     singpin.write(0.5f);
-//     wait(time);
-//     singpin.write(1.0);
-// }
-//
-// // Just runs the motor
-// void singSpinMotor(){
-//     while(true){
-//         singMotorOut(readMotorState());
-//         Thread::wait(5);
-//     }
-// }
+    // Current pointer should never exceed the end of the buffer.
+    while(current_ptr < end){
+        // Each command is either 2 or 3 characters long.
+        // If the 2nd charater is # or ^, it is three characters long.
+        if(commandBuffer[current_ptr+1] == '#' || commandBuffer[current_ptr+1] == '^'){
+            // The 3rd char is the length.
+            timeArray[note_ptr] = commandBuffer[current_ptr+2] - '0';
+            // Match 1st char to the note.
+            switch (commandBuffer[current_ptr]) {
+                case 'C':
+                    noteArray[note_ptr] = 1;
+                    break;
+                case 'D':
+                    noteArray[note_ptr] = 3;
+                    break;
+                case 'E':
+                    noteArray[note_ptr] = 5;
+                    break;
+                case 'F':
+                    noteArray[note_ptr] = 6;
+                    break;
+                case 'G':
+                    noteArray[note_ptr] = 8;
+                    break;
+                case 'A':
+                    noteArray[note_ptr] = 10;
+                    break;
+                case 'B':
+                    noteArray[note_ptr] = 12;
+                    break;
+                default:
+                    noteArray[note_ptr] = 1;
+                    break;
+            }
+            // For the sharp or flat, increment or decrement.
+            switch (commandBuffer[current_ptr+1]) {
+                case '#':
+                    noteArray[note_ptr]++;
+                    break;
+                case '^':
+                    noteArray[note_ptr]--;
+                    break;
+                default:
+                    break;
+            }
+            // Move on to next pointer in array
+            note_ptr++;
+            // Advance 3 in buffer.
+            current_ptr = current_ptr + 3;
+
+        }
+
+        // Otherwise, command is 2 characters long.
+        else{
+            // 2nd char is time.
+            timeArray[note_ptr] = commandBuffer[current_ptr+2] - '0';
+            // 1st char is note.
+            switch (commandBuffer[current_ptr]) {
+                case 'C':
+                    noteArray[note_ptr] = 1;
+                    break;
+                case 'D':
+                    noteArray[note_ptr] = 3;
+                    break;
+                case 'E':
+                    noteArray[note_ptr] = 5;
+                    break;
+                case 'F':
+                    noteArray[note_ptr] = 6;
+                    break;
+                case 'G':
+                    noteArray[note_ptr] = 8;
+                    break;
+                case 'A':
+                    noteArray[note_ptr] = 10;
+                    break;
+                case 'B':
+                    noteArray[note_ptr] = 12;
+                    break;
+                default:
+                    noteArray[note_ptr] = 1;
+                    break;
+            }
+            // Increment note pointer, advance buffer pointer by 2.
+            note_ptr++;
+            current_ptr = current_ptr + 2;
+        }
+    }
+    // Points to after last note, aka equals number of notes.
+    return note_ptr;
+}
 
 //Converts char array from start to end into float
 float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
@@ -231,8 +254,6 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
     float partWhole = 0.0;
 
     // By default, indexDecimal after the last char
-    int8_t indexDecimal = end + 1;
-
     // If first char is negative, set isPositive flag, and remove the - from
     // consideration.
     if (commandBuffer[start]  == '-'){
@@ -271,14 +292,8 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
 int main()
 {
     pc.printf("Startup!\n\r");
-    // spinWait = 0.01;
-    // motorStop();
+    motorStop();
 
-    //Run the motor synchronisation
-    // orState = motorHome();
-    //orState is subtracted from future rotor state inputs to align rotor and motor states
-
-    // pc.printf("Rotor origin: %x\n\r",orState);
 
     // Input buffer
     char command[ARRAYSIZE] = {0};
@@ -292,8 +307,6 @@ int main()
     // speedTimer.start();
     // I3.mode(PullNone);
     // I3.rise(&rps);
-
-    // singpin.period_us(100);
 
     // VPIDthread.start(VPID);
     // pc.printf("%d", VPIDthread.get_priority());
@@ -353,6 +366,7 @@ int main()
                 case 'V':
                     // index is EOL, index - 1 is last char
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
+                    // Run thread.
                     break;
 
                 // Is R first.
@@ -361,15 +375,22 @@ int main()
                     if (indexV < index){
                         desiredRevolutions = charsToFloat(command, 1, indexV - 1);
                         desiredSpeedValue = charsToFloat(command, indexV + 1, index - 1);
+                        // Run thread.
                     }
                     // Only R
                     else {
                         desiredRevolutions = charsToFloat(command, 1, index - 1);
+                        // Run thread.
                     }
                     break;
                 // Needs to sing
                 case 'T':
-//                    listNotes = charstoNotes(command, 1, index - 1);
+                   numberNotes = charstoNotes(command, 1, index - 1);
+                   // Run normal speed thread
+                   // Run singing thread
+                   singingSpeedThread.start(singingSpeed);
+                //    playNotesThread.start(playNotes);
+                   // Run thread.
                     break;
                 // If something weird comes along.
                 default:
@@ -380,7 +401,7 @@ int main()
             }
 
             pc.printf("desiredSpeed: %3.2f ", desiredSpeedValue);
-            pc.printf(" desiredRevolutions: %3.2f\n\n", desiredRevolutions);
+            pc.printf(" desiredRevolutions: %3.2f\n\r", desiredRevolutions);
 
             // Clear buffer
             for(index = 0; index < 49; index++){
@@ -452,30 +473,4 @@ int main()
 //     bias = float(vartens)*10 + float(varunits) + float(vardecs)/10;
 //     printf("Bias: %2.1f\r\n", bias);
 //     controller.setBias(bias);
-//     break;
-//
-// case 'T':
-//     hdrds = 0, units = 0, tens = 0, decimals = 0;
-//
-//     //If decimal point is in the second character (eg, V.1)
-//     if(command[1]=='.') {
-//         //Extract decimal rev/s
-//         decimals = command[2] - '0';
-//
-//         //If decimal point is in the third character (eg, V0.1)
-//     } else if(command[2]=='.') {
-//         units = command[1] - '0';
-//         decimals = command[3] - '0';
-//
-//         //If decimal point is in the fourth character (eg, V10.1)
-//     } else if(command[3]=='.') {
-//         tens = command[1] - '0';
-//         units = command[2] - '0';
-//         decimals = command[4] - '0';
-//     } else if(command[4]=='.') {
-//         hdrds = command[1] - '0';
-//         tens = command[2] - '0';
-//         units = command[3] - '0';
-//         decimals = command[5] - '0';
-//     }
 //     break;
