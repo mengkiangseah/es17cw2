@@ -45,19 +45,14 @@ State   L1  L2  L3
 7       -   -   -
 */
 
-//Photointerrupter inputs
-// DigitalIn I1(I1pin);
-// DigitalIn I2(I2pin);
-// InterruptIn I3(I3pin);
-
-//Motor Drive outputs
-// DigitalOut clk(LED1);
+// Photointerrupter inputs
+DigitalIn I1(I1pin);
+DigitalIn I2(I2pin);
+InterruptIn I3(I3pin);
 
 //NOTE, BusOut declares things in reverse (ie, 0, 1, 2, 3) compared to binary represenation
-//BusOut motor(L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
-//PwmOut singpin(L1Lpin);
-// BusOut motor(L1Lpin, L1Hpin, L2Lpin, L2Hpin, L3Lpin, L3Hpin);//L1Lpin,
-
+BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
+BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
 
 //Timeout function for rotating at set speed
 // Timeout spinTimer;
@@ -72,19 +67,78 @@ State   L1  L2  L3
 // Timer speedTimer;
 // float measuredRevs = 0, revtimer = 0;
 
+// For connection
 Serial pc(SERIAL_TX, SERIAL_RX);
 
 // Some globals
 float desiredSpeedValue = 0.0f;
 float desiredRevolutions = 0.0f;
 float measuredVelocity = 0.0f;
+int8_t numberNotes = 0;
+int8_t notePointer = 0;
+
+// Drive states
+int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+int8_t CWHigh[6] = {0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
+
+int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
 
 // To store notes
 int8_t [8] noteArray = {0};
 int8_t [8] timeArray = {0};
 
 // Mapping note to frequency
-const float[14] = {};
+const float[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
+
+// List of threads.
+Thread singingSpeedThread;
+Thread playsNotesThread;
+
+// Reads the state.
+inline int8_t readRotorState(){
+	return (I1 + I2<<1 + I3<<2);
+}
+
+// Stops motor.
+inline void motorStop(){
+	motorLow = 0x0;
+	motorHigh = 0x7;
+}
+
+// Sets output to next state.
+inline void motorOut(int8_t driveState){
+	//Switch off all transistors to prevent shoot-through
+    motorStop();
+
+	//Assign new values to motor output
+	if(spinCW){
+		motorLow = CWLow[driveState];
+		motorHigh = CWHigh[driveState];
+	}
+
+    else {
+		motorLow = ACWLow[driveState];
+		motorHigh = ACWHigh[driveState];
+	}
+}
+
+// Function running in singingSpeedThreads, approx 4ms period per phase
+// Means 24ms, 41.6Hz
+void singingSpeed(){
+    while(1){
+        intState = readRotorState();
+        motorOut(intState);
+        Thread::wait(4.0f);
+    }
+}
+
+// Function running in playsNotesThread,
+void playNotes(){
+    while(1){
+
+    }
+}
 
 //Converts char array from start to end into float
 // Returns number of notes
@@ -238,14 +292,8 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
 int main()
 {
     pc.printf("Startup!\n\r");
-    // spinWait = 0.01;
-    // motorStop();
+    motorStop();
 
-    //Run the motor synchronisation
-    // orState = motorHome();
-    //orState is subtracted from future rotor state inputs to align rotor and motor states
-
-    // pc.printf("Rotor origin: %x\n\r",orState);
 
     // Input buffer
     char command[ARRAYSIZE] = {0};
@@ -259,8 +307,6 @@ int main()
     // speedTimer.start();
     // I3.mode(PullNone);
     // I3.rise(&rps);
-
-    // singpin.period_us(100);
 
     // VPIDthread.start(VPID);
     // pc.printf("%d", VPIDthread.get_priority());
@@ -339,7 +385,11 @@ int main()
                     break;
                 // Needs to sing
                 case 'T':
-                   listNotes = charstoNotes(command, 1, index - 1);
+                   numberNotes = charstoNotes(command, 1, index - 1);
+                   // Run normal speed thread
+                   // Run singing thread
+                   singingSpeedThread.start(singingSpeed);
+                //    playNotesThread.start(playNotes);
                    // Run thread.
                     break;
                 // If something weird comes along.
