@@ -56,8 +56,10 @@ Serial pc(SERIAL_TX, SERIAL_RX);
 // Some globals
 float desiredSpeedValue = 0.0f;
 float desiredRevolutions = 0.0f;
-float measuredVelocity = 0.0f;
+float measuredSpeed = 0.0f;
 bool spinCW = true;
+//Wait value for fixed speed operation
+float fixedSpeedWait = 0;
 
 // For singing
 int8_t numberNotes = 0;
@@ -71,20 +73,13 @@ float speedKc = 0.2;
 float speedTi = 0.8;
 float speedTd = 0.0;
 
-//Speed demanded by user
-float speedTarget = 0;
-
 //PID controller output
 float speedOutput = 0;
-
-//Wait value for fixed speed operation
-float fixedSpeedWait = 0;
 
 PID speedController(speedKc, speedTi, speedTd, speedPIDrate);
 
 Timer speedTimer;
 float revTimer = 0;
-float measuredSpeed = 0;
 
 // Drive states
 int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
@@ -181,9 +176,17 @@ void fixedSpeed()
 {
     while(1) {
         clk = !clk;
+		motorHigh = 0x7;
+		// motorLow = 0x0;
+		L1L = 0x0;
+		L2L = 0x0;
+		L3L = 0x0;
         motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
-        motorLow = CWLow[(I1 + I2*2 + I3*4)];
-        Thread::wait(fixedSpeedWait);
+		// motorLow = CWLow[(I1 + I2*2 + I3*4)];
+		L1L = CWL1L[(I1 + I2*2 + I3*4)];
+		L2L = CWL2L[(I1 + I2*2 + I3*4)];
+		L3L = CWL3L[(I1 + I2*2 + I3*4)];
+		Thread::wait(fixedSpeedWait);
     }
 }
 
@@ -342,50 +345,50 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end)
 void resetThreads()
 {
 
-    pc.printf("Resetting threads\r\n");
+    pc.printf("Resetting threads...\r\n");
 
     if(singingSpeedThread->get_state()!=0 && singingSpeedThread->get_state()!=10) {
         singingSpeedThread->terminate();
         pc.printf("sing 1\r\n");
-        delete singingSpeedThread;
+		singingSpeedThread.join();
         pc.printf("sing 2\r\n");
-        singingSpeedThread = new Thread(osPriorityNormal, 1024);
+		delete singingSpeedThread;
         pc.printf("sing 3\r\n");
     }
 
     if(playsNotesThread->get_state()!=0 && playsNotesThread->get_state()!=10) {
         playsNotesThread->terminate();
         pc.printf("play 1\r\n");
-        delete playsNotesThread;
+        playsNotesThread.join();
         pc.printf("play 2\r\n");
-        playsNotesThread = new Thread(osPriorityNormal, 2048);
+		delete playsNotesThread;
         pc.printf("play 3\r\n");
     }
 
     if(brakeRevCountThread->get_state()!=0 && brakeRevCountThread->get_state()!=10) {
         brakeRevCountThread->terminate();
         pc.printf("revCount 1\r\n");
-        delete brakeRevCountThread;
+        brakeRevCountThread.join();
         pc.printf("revCount 2\r\n");
-        brakeRevCountThread = new Thread(osPriorityNormal, 2048);
+		delete brakeRevCountThread;
         pc.printf("revCount 3\r\n");
     }
 
     if(speedPIDThread->get_state()!=0 && speedPIDThread->get_state()!=10) {
         speedPIDThread->terminate();
         pc.printf("speedPID 1\r\n");
-        delete speedPIDThread;
+        speedPIDThread.join();
         pc.printf("speedPID 2\r\n");
-        speedPIDThread = new Thread(osPriorityNormal, 4096);
+		delete speedPIDThread;
         pc.printf("speedPID 3\r\n");
     }
 
     if(fixedSpeedThread->get_state()!=0 && fixedSpeedThread->get_state()!=10) {
         fixedSpeedThread->terminate();
         pc.printf("fixedSpeed 1\r\n");
-        delete fixedSpeedThread;
+        fixedSpeedThread.join();
         pc.printf("fixedSpeed 2\r\n");
-        fixedSpeedThread = new Thread(osPriorityNormal, 1024);
+		delete fixedSpeedThread;
         pc.printf("fixedSpeed 3\r\n");
     }
 
@@ -405,27 +408,6 @@ int main()
     int index = 0;
     int indexV = 0;
     bool found = false;
-
-
-//    singingSpeedThread = new Thread(osPriorityNormal, 1024);
-//    playsNotesThread = new Thread(osPriorityNormal, 2048);
-//    brakeRevCountThread = new Thread(osPriorityNormal, 2048);
-//    speedPIDThread = new Thread(osPriorityNormal, 8192);
-//    fixedSpeedThread = new Thread(osPriorityNormal, 1024);
-
-    // speedTimer.reset();
-    // speedTimer.start();
-    // I3.mode(PullNone);
-    // I3.rise(&rps);
-
-    // VPIDthread.start(VPID);
-    // pc.printf("%d", VPIDthread.get_priority());
-    // VPIDthread.set_priority(osPriorityAboveNormal);
-
-    // controller.setInterval(PIDrate);
-    // controller.setMode(0);
-
-    // resetThreads();
 
     while(1) {
 
@@ -479,27 +461,28 @@ int main()
 
             //Analyse the input string
             switch (command[0]) {
-                    // Commands to kill all threads
-                    // Reset all values to zero
 
-                    // Only V
+                // Only V
                 case 'V':
-
-//                    speedPIDThread = new Thread(osPriorityNormal, 4096);
-                    fixedSpeedThread = new Thread(osPriorityNormal, 1024);
+					// Prepare
+					speedPIDThread = new Thread(osPriorityNormal, 4096);
+                	fixedSpeedThread = new Thread(osPriorityNormal, 1024);
                     // index is EOL, index - 1 is last char
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
-                    // Run thread.
+					speedController.setSetPoint(desiredSpeedValue);
+
+					speedTimer.reset();
+					speedTimer.start();
                     I3.rise(&rps);
                     fixedSpeedWait = 1/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
-//                    speedPIDThread->start(&VPID);
+					// Run threads.
+					speedPIDThread->start(&VPID);
                     fixedSpeedThread->start(&fixedSpeed);
 
-                    speedController.setSetPoint(desiredSpeedValue);
                     break;
 
-                    // Is R first.
+                // Is R first.
                 case 'R':
                     // V also exists, because indexV before index (EOL)
                     if (indexV < index) {
@@ -513,18 +496,20 @@ int main()
                         // Run thread.
                     }
                     break;
-                    // Needs to sing
+
+				// Needs to sing
                 case 'T':
-                   numberNotes = charstoNotes(command, 1, index - 1);
-                   // Run normal speed thread
-                   singingSpeedThread.start(singingSpeed);
-				   notePointer = 0;
-                   // Run singing thread
-				   L1L.write(0.5f);
-				   L2L.write(0.5f);
-				   L3L.write(0.5f);
-                   playNotesThread.start(playNotes);
-                    break;
+                	numberNotes = charstoNotes(command, 1, index - 1);
+                	// Run normal speed thread
+                	singingSpeedThread->start(&singingSpeed);
+					notePointer = 0;
+                	// Run singing thread
+					L1L.write(0.5f);
+					L2L.write(0.5f);
+					L3L.write(0.5f);
+					playNotesThread->start(&playNotes);
+					break;
+
 				// Braking function
 				case 'B':
 					brakeRevCount = 0;
@@ -534,8 +519,8 @@ int main()
 					L2L = CWL2L[1];
 					L3L = CWL3L[1];
 					I3.mode(PullNone);
-				    I3.rise(&brakeCount);
-					// brakeRevCountThread.start(brakeCount);
+					I3.rise(&brakeCount);
+					brakeRevCountThread->start(&brakeCount);
 					break;
 				case 'C':
 					pc.printf("Brake Count: %d\n\r", brakeRevCount);
@@ -548,7 +533,7 @@ int main()
                     break;
             }
 
-            pc.printf("desiredSpeed: %3.2f ", desiredSpeedValue);
+            pc.printf("desiredSpeed: %3.2f ",   );
             pc.printf(" desiredRevolutions: %3.2f\n\r", desiredRevolutions);
 
             // Clear buffer
