@@ -78,7 +78,7 @@ void motorOut(int8_t driveState)
 //Function for calculating the rotational velocity of the motor
 //***************************************************
 
-InterruptIn PIN;
+InterruptIn PIN(h6);
 Timer speedTimer;
 float revTimer = 0;
 float measuredSpeed = 0;
