@@ -53,21 +53,10 @@ InterruptIn I3(I3pin);
 //NOTE, BusOut declares things in reverse (ie, 0, 1, 2, 3) compared to binary represenation
 BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
 BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
-
-PwmOut L1Lpin
-
-//Timeout function for rotating at set speed
-// Timeout spinTimer;
-// float spinWait = 10;
-// float revsec = 0;
-
-//Variables for spinning N revolutions
-// int8_t targetRevs = 0;
-// int8_t currRevs = 0;
-
-//Timer used for calculating speed
-// Timer speedTimer;
-// float measuredRevs = 0, revtimer = 0;
+// PWM out for singing.
+PwmOut L1L(L1Lpin);
+PwmOut L2L(L2Lpin);
+PwmOut L3L(L3Lpin);
 
 // For connection
 Serial pc(SERIAL_TX, SERIAL_RX);
@@ -82,11 +71,16 @@ bool spinCW = true;
 int8_t brakeRevCount = 0;
 
 // Drive states
-int8_t CWLow[7] = {0x0, 0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
-int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
+int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
+int8_t ACWHigh[7] = {0x0, 0x3, 0x5, 0x3, 0x6, 0x6, 0x5};
 
-int8_t ACWLow[7] = {0x0, 0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
-int8_t ACWHigh[7] = {0x0, 0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
+int8_t CWL1L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
+int8_t CWL2L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
+int8_t CWL3L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
+
+int8_t ACWL1L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
+int8_t ACWL2L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
+int8_t ACWL3L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
 
 // To store notes
 int8_t noteArray[8] = {0};
@@ -105,38 +99,21 @@ inline int8_t readRotorState(){
 	return (I1 + I2<<1 + I3<<2);
 }
 
-// Stops motor.
-// inline void motorStop(){
-// 	motorLow = 0x0;
-// 	motorHigh = 0x7;
-// }
-
-// Sets output to next state.
-// inline void motorOut(int8_t driveState){
-// 	//Switch off all transistors to prevent shoot-through
-//     motorStop();
-//
-// 	//Assign new values to motor output
-// 	if(spinCW){
-// 		motorLow = CWLow[driveState];
-// 		motorHigh = CWHigh[driveState];
-// 	}
-//
-//     else {
-// 		motorLow = ACWLow[driveState];
-// 		motorHigh = ACWHigh[driveState];
-// 	}
-// }
-
 // Function running in singingSpeedThreads, approx 4ms period per phase
 // Means 24ms, 41.6Hz
 void singingSpeed(){
     while(1){
         motorHigh = 0x7;
-        motorLow = 0x0;
+		// motorLow = 0x0;
+        L1L = 0x0;
+		L2L = 0x0;
+		L3L = 0x0;
         motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
-        motorLow = CWLow[(I1 + I2*2 + I3*4)];
-        // Thread::wait(4.0f);
+        // motorLow = CWLow[(I1 + I2*2 + I3*4)];
+		L1L = CWL1L[(I1 + I2*2 + I3*4)];
+		L2L = CWL2L[(I1 + I2*2 + I3*4)];
+		L3L = CWL3L[(I1 + I2*2 + I3*4)];
+		Thread::wait(4.0f);
     }
 }
 
@@ -149,7 +126,13 @@ void brakeCount(){
 // Function running in playsNotesThread,
 void playNotes(){
     while(1){
-
+		int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
+		int currentTime = timeArray[notePointer];
+		L1L.period_ms(currentPeriod);
+		L2L.period_ms(currentPeriod);
+		L3L.period_ms(currentPeriod);
+		notePointer = (notePointer + 1) % numberNotes;
+		Thread::wait(currentTime);
     }
 }
 
@@ -372,6 +355,11 @@ int main()
             pc.putc('\n');
             pc.putc('\r');
 
+			// Set PWM back to 100%
+			L1L.write(1.0f);
+			L2L.write(1.0f);
+			L3L.write(1.0f);
+
             //Analyse the input string
             switch (command[0]) {
                 // Commands to kill all threads
@@ -403,20 +391,27 @@ int main()
                    numberNotes = charstoNotes(command, 1, index - 1);
                    // Run normal speed thread
                    singingSpeedThread.start(singingSpeed);
+				   notePointer = 0;
                    // Run singing thread
-                //    playNotesThread.start(playNotes);
+				   L1L.write(0.5f);
+				   L2L.write(0.5f);
+				   L3L.write(0.5f);
+                   playNotesThread.start(playNotes);
                     break;
 				// Braking function
 				case 'B':
 					brakeRevCount = 0;
 					motorHigh = CWHigh[1];
 					motorLow = CWLow[1];
+					// L1L = CWL1L[1];
+					// L2L = CWL2L[1];
+					// L3L = CWL3L[1];
 					I3.mode(PullNone);
 				    I3.rise(&brakeCount);
 					// brakeRevCountThread.start(brakeCount);
 					break;
 				case 'C':
-					pc.prinf("Brake Count: %d\n\r", brakeRevCount);
+					pc.printf("Brake Count: %d\n\r", brakeRevCount);
 					break;
                 // If something weird comes along.
                 default:
@@ -438,65 +433,3 @@ int main()
     }
 
 }
-
-// case 's':
-//     printf("Measured: %2.3f, revsec: %2.3f\r\n", measuredRevs, revsec);
-//     printf("PID: %2.3f\r\n", speedControl);
-//     break;
-//
-// case 'K':
-//     vartens = command[1] - '0';
-//     varunits = command[2] - '0';
-//     vardecs = command[4] - '0';
-//     Kc = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-//     printf("Kc: %2.1f\r\n", Kc);
-//     controller.setTunings(Kc, Ti, Td);
-//     break;
-//
-// case 'i':
-//     vartens = command[1] - '0';
-//     varunits = command[2] - '0';
-//     vardecs = command[4] - '0';
-//     Ti = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-//     printf("Ti: %2.1f\r\n", Ti);
-//     controller.setTunings(Kc, Ti, Td);
-//     break;
-//
-// case 'd':
-//     vartens = command[1] - '0';
-//     varunits = command[2] - '0';
-//     vardecs = command[4] - '0';
-//     Td = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-//     printf("Td: %2.1f\r\n", Td);
-//     controller.setTunings(Kc, Ti, Td);
-//     break;
-//
-// case 'P':
-//     vartens = command[1] - '0';
-//     varunits = command[2] - '0';
-//     vardecs = command[4] - '0';
-//     PIDrate = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-//     controller.setInterval(PIDrate);
-//     controller.setMode(1);
-//     printf("Rate: %2.1f\r\n", PIDrate);
-//
-// case 'b':
-//     if(command[1]=='.') {
-//         //Extract decimal rev/s
-//         vardecs = command[2] - '0';
-//
-//         //If decimal point is in the third character (eg, V-0.1)
-//     } else if(command[2]=='.') {
-//         varunits = command[1] - '0';
-//         vardecs = command[3] - '0';
-//
-//         //If decimal point is in the fourth character (eg, V-10.1)
-//     } else if(command[3]=='.') {
-//         vartens = command[1] - '0';
-//         varunits = command[2] - '0';
-//         vardecs = command[4] - '0';
-//     }
-//     bias = float(vartens)*10 + float(varunits) + float(vardecs)/10;
-//     printf("Bias: %2.1f\r\n", bias);
-//     controller.setBias(bias);
-//     break;
