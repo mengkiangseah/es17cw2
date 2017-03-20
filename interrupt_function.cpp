@@ -11,7 +11,7 @@
 #define I3pin D12
 
 //Incremental encoder input pins
-#define CHA   D7
+#define CHA   D7  //QUADRATURE_PIN
 #define CHB   D8
 
 //Motor Drive output pins   //Mask in output byte
@@ -55,12 +55,19 @@ inline void motorStop()
 //***************************************************
 
 int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+<<<<<<< HEAD
 int8_t CWHigh[6] = {0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
 
 int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
 int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
 
 bool spinCW = True;
+=======
+int8_t CWHigh[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+
+int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
+>>>>>>> b910c3d07d66fc2800669c051b13b6fceab7410d
 
 //DEPENDS ON HOW WE IMPLEMENT THE MOTOR CONTROL PINS
 void motorOut(int8_t driveState)
@@ -91,6 +98,8 @@ float measuredSpeed = 0;
 
 PIN.rise(&rps);
 
+float position = 0; // variable to store actual rotational position of the motor. Photointerrupt is 0deg
+
 //Don't forget to start the timer in the main loop before
 //attaching the interrupt
 
@@ -103,6 +112,7 @@ void rps()
 
 	//1000ms over the timer to calculate the speed
 	measuredSpeed = 1000/(revTimer);
+	position = 0;
 }
 
 //***************************************************
@@ -271,6 +281,7 @@ void rps_counter()
 	measuredSpeed = 1000/(revTimer);
 
 	countRevs++;
+	position = 0;
 
 }
 
@@ -278,17 +289,17 @@ void rps_counter()
 //Quadrature mode interrupts and controllers
 //***************************************************
 
-InterruptIn QUADRATURE_PIN;
+InterruptIn QUADRATURE_PIN(CHA);
 
-uint8_t quadCount = 0;
-
-PIN.rise(&quadrature_counter);
+// WARNING	only attach at low speeds, otherwise it will trigger too often
+QUADRATURE_PIN.rise(&quadrature_counter);
 
 //Don't forget to start the timer in the main loop before
 //attaching the interrupt
 
 void quadrature_counter()
 {
-	quadCount++;	
-}
 
+	position = position + 3.07;	
+
+}
