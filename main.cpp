@@ -11,7 +11,7 @@
 // PID controller(Kc, Ti, Td, PIDrate);
 // Thread VPIDthread;
 
-Photointerrupter input pins
+// Photointerrupter input pins
 #define I1pin D2
 #define I2pin D11
 #define I3pin D12
@@ -54,6 +54,8 @@ InterruptIn I3(I3pin);
 BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
 BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
 
+PwmOut L1Lpin
+
 //Timeout function for rotating at set speed
 // Timeout spinTimer;
 // float spinWait = 10;
@@ -76,20 +78,21 @@ float desiredRevolutions = 0.0f;
 float measuredVelocity = 0.0f;
 int8_t numberNotes = 0;
 int8_t notePointer = 0;
+bool spinCW = true;
 
 // Drive states
-int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
-int8_t CWHigh[6] = {0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
+int8_t CWLow[7] = {0x0, 0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
 
-int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
-int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
+int8_t ACWLow[7] = {0x0, 0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[7] = {0x0, 0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
 
 // To store notes
-int8_t [8] noteArray = {0};
-int8_t [8] timeArray = {0};
+int8_t noteArray[8] = {0};
+int8_t timeArray[8] = {0};
 
 // Mapping note to frequency
-const float[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
+const float frequencyTable[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
 
 // List of threads.
 Thread singingSpeedThread;
@@ -101,34 +104,36 @@ inline int8_t readRotorState(){
 }
 
 // Stops motor.
-inline void motorStop(){
-	motorLow = 0x0;
-	motorHigh = 0x7;
-}
+// inline void motorStop(){
+// 	motorLow = 0x0;
+// 	motorHigh = 0x7;
+// }
 
 // Sets output to next state.
-inline void motorOut(int8_t driveState){
-	//Switch off all transistors to prevent shoot-through
-    motorStop();
-
-	//Assign new values to motor output
-	if(spinCW){
-		motorLow = CWLow[driveState];
-		motorHigh = CWHigh[driveState];
-	}
-
-    else {
-		motorLow = ACWLow[driveState];
-		motorHigh = ACWHigh[driveState];
-	}
-}
+// inline void motorOut(int8_t driveState){
+// 	//Switch off all transistors to prevent shoot-through
+//     motorStop();
+//
+// 	//Assign new values to motor output
+// 	if(spinCW){
+// 		motorLow = CWLow[driveState];
+// 		motorHigh = CWHigh[driveState];
+// 	}
+//
+//     else {
+// 		motorLow = ACWLow[driveState];
+// 		motorHigh = ACWHigh[driveState];
+// 	}
+// }
 
 // Function running in singingSpeedThreads, approx 4ms period per phase
 // Means 24ms, 41.6Hz
 void singingSpeed(){
     while(1){
-        intState = readRotorState();
-        motorOut(intState);
+        motorHigh = 0x7;
+        motorLow = 0x0;
+        motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
+        motorLow = CWLow[(I1 + I2*2 + I3*4)];
         Thread::wait(4.0f);
     }
 }
@@ -150,8 +155,8 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end){
     // Clear buffers;
     int i = 0;
     for (i = 0; i < 8; i++) {
-        noteArray = 0;
-        timeArray = 0;
+        noteArray[i] = 0;
+        timeArray[i] = 0;
     }
 
     // Current pointer should never exceed the end of the buffer.
@@ -254,6 +259,8 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
     float partWhole = 0.0;
 
     // By default, indexDecimal after the last char
+    int8_t indexDecimal = end + 1;
+
     // If first char is negative, set isPositive flag, and remove the - from
     // consideration.
     if (commandBuffer[start]  == '-'){
@@ -292,8 +299,8 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
 int main()
 {
     pc.printf("Startup!\n\r");
-    motorStop();
-
+    motorHigh = 0x7;
+    motorLow = 0x0;
 
     // Input buffer
     char command[ARRAYSIZE] = {0};
@@ -387,10 +394,9 @@ int main()
                 case 'T':
                    numberNotes = charstoNotes(command, 1, index - 1);
                    // Run normal speed thread
-                   // Run singing thread
                    singingSpeedThread.start(singingSpeed);
+                   // Run singing thread
                 //    playNotesThread.start(playNotes);
-                   // Run thread.
                     break;
                 // If something weird comes along.
                 default:
