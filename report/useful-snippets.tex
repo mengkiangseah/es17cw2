@@ -1,0 +1,44 @@
+%Include images in report
+
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=\textwidth, angle=0]{Picture.png}
+\caption{Caption}
+\label{Label}
+\end{center}
+\end{figure}
+
+%Include equations aligned about equal sign
+
+\begin{equation}
+\begin{split}
+A &= B \\ &= C
+\end{split}
+\end{equation}
+
+%Tables with spacing
+
+\begin{table}
+\centering
+\caption{Caption}
+\label{Label}
+\bgroup
+\def\arraystretch{1.2}
+\begin{tabular}{l|l}
+% table in here
+\end{tabular}
+\egroup
+\end{table}
+
+%Bibliography entry
+
+@article{short-name,
+	author	= "",
+    title	= "",
+    year	= "",
+    journal	= "",
+    volume	= "",
+    number	= "",
+    pages	= "",
+    note	= ""
+}
