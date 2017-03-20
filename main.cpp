@@ -1,15 +1,6 @@
 #include "mbed.h"
-// #include "rtos.h"
-// #include "PID.h"
-
-//PID controller configuration
-// float PIDrate = 0.2;
-// float Kc = 10.0;
-// float Ti = 3.0;
-// float Td = 0;
-// float speedControl = 0;
-// PID controller(Kc, Ti, Td, PIDrate);
-// Thread VPIDthread;
+#include "rtos.h"
+#include "PID.h"
 
 // Photointerrupter input pins
 #define I1pin D2
@@ -31,7 +22,6 @@
 //Define sized for command arrays
 #define ARRAYSIZE 49
 
-
 //Mapping from sequential drive states to motor phase outputs
 /*
 State   L1  L2  L3
@@ -52,11 +42,13 @@ InterruptIn I3(I3pin);
 
 //NOTE, BusOut declares things in reverse (ie, 0, 1, 2, 3) compared to binary represenation
 BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
-BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
+// BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
 // PWM out for singing.
 PwmOut L1L(L1Lpin);
 PwmOut L2L(L2Lpin);
 PwmOut L3L(L3Lpin);
+// Diagnostics
+DigitalOut clk(LED1);
 
 // For connection
 Serial pc(SERIAL_TX, SERIAL_RX);
@@ -65,10 +57,34 @@ Serial pc(SERIAL_TX, SERIAL_RX);
 float desiredSpeedValue = 0.0f;
 float desiredRevolutions = 0.0f;
 float measuredVelocity = 0.0f;
+bool spinCW = true;
+
+// For singing
 int8_t numberNotes = 0;
 int8_t notePointer = 0;
-bool spinCW = true;
+// Diagnostics
 int8_t brakeRevCount = 0;
+
+//PID controller configuration
+float speedPIDrate = 0.2;
+float speedKc = 0.2;
+float speedTi = 0.8;
+float speedTd = 0.0;
+
+//Speed demanded by user
+float speedTarget = 0;
+
+//PID controller output
+float speedOutput = 0;
+
+//Wait value for fixed speed operation
+float fixedSpeedWait = 0;
+
+PID speedController(speedKc, speedTi, speedTd, speedPIDrate);
+
+Timer speedTimer;
+float revTimer = 0;
+float measuredSpeed = 0;
 
 // Drive states
 int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
@@ -87,22 +103,26 @@ int8_t noteArray[8] = {0};
 int8_t timeArray[8] = {0};
 
 // Mapping note to frequency
-const float frequencyTable[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
+const float frequencyPeriodTable[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
 
 // List of threads.
-Thread singingSpeedThread;
-Thread playsNotesThread;
-Thread brakeRevCountThread;
+Thread* singingSpeedThread;
+Thread* playsNotesThread;
+Thread* brakeRevCountThread;
+Thread* speedPIDThread;
+Thread* fixedSpeedThread;
 
 // Reads the state.
-inline int8_t readRotorState(){
-	return (I1 + I2<<1 + I3<<2);
+inline int8_t readRotorState()
+{
+    return (I1 + I2<<1 + I3<<2);
 }
 
 // Function running in singingSpeedThreads, approx 4ms period per phase
 // Means 24ms, 41.6Hz
-void singingSpeed(){
-    while(1){
+void singingSpeed()
+{
+    while(1) {
         motorHigh = 0x7;
 		// motorLow = 0x0;
         L1L = 0x0;
@@ -118,9 +138,7 @@ void singingSpeed(){
 }
 
 void brakeCount(){
-	// while(1){
-		brakeRevCount++;
-	// }
+    brakeRevCount++;
 }
 
 // Function running in playsNotesThread,
@@ -133,12 +151,46 @@ void playNotes(){
 		L3L.period_ms(currentPeriod);
 		notePointer = (notePointer + 1) % numberNotes;
 		Thread::wait(currentTime);
+	}
+}
+
+void VPID()
+{
+    while(1) {
+        clk = !clk;
+        speedController.setProcessValue(measuredSpeed);
+        speedOutput = speedController.compute();
+        fixedSpeedWait = (1/(speedOutput*6));
+        Thread::wait(speedPIDrate);
+    }
+}
+
+void rps()
+{
+    speedTimer.stop();
+    revTimer = speedTimer.read_ms();
+    speedTimer.reset();
+    speedTimer.start();
+
+    //1000ms over the timer to calculate the speed
+    measuredSpeed = 1000/(revTimer);
+    // position = 0;
+}
+
+void fixedSpeed()
+{
+    while(1) {
+        clk = !clk;
+        motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
+        motorLow = CWLow[(I1 + I2*2 + I3*4)];
+        Thread::wait(fixedSpeedWait);
     }
 }
 
 //Converts char array from start to end into float
 // Returns number of notes
-int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end){
+int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end)
+{
     // Start of first note.
     int8_t current_ptr = start;
     int8_t note_ptr = 0;
@@ -151,10 +203,10 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end){
     }
 
     // Current pointer should never exceed the end of the buffer.
-    while(current_ptr < end){
+    while(current_ptr < end) {
         // Each command is either 2 or 3 characters long.
         // If the 2nd charater is # or ^, it is three characters long.
-        if(commandBuffer[current_ptr+1] == '#' || commandBuffer[current_ptr+1] == '^'){
+        if(commandBuffer[current_ptr+1] == '#' || commandBuffer[current_ptr+1] == '^') {
             // The 3rd char is the length.
             timeArray[note_ptr] = commandBuffer[current_ptr+2] - '0';
             // Match 1st char to the note.
@@ -203,7 +255,7 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end){
         }
 
         // Otherwise, command is 2 characters long.
-        else{
+        else {
             // 2nd char is time.
             timeArray[note_ptr] = commandBuffer[current_ptr+2] - '0';
             // 1st char is note.
@@ -243,7 +295,8 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end){
 }
 
 //Converts char array from start to end into float
-float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
+float charsToFloat(char* commandBuffer, int8_t start, int8_t end)
+{
     int8_t isPositive = 1;
 
     float partDecimal = 0.0;
@@ -254,18 +307,18 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
 
     // If first char is negative, set isPositive flag, and remove the - from
     // consideration.
-    if (commandBuffer[start]  == '-'){
+    if (commandBuffer[start]  == '-') {
         isPositive = -1;
         start++;
     }
 
     // Decimal point either second last, or third last char.
-    if (commandBuffer[end - 1] == '.'){
+    if (commandBuffer[end - 1] == '.') {
         indexDecimal = end - 1;
         partDecimal = float(commandBuffer[end] - '0')/10.0f;
     }
 
-    else if (commandBuffer[end - 2] == '.'){
+    else if (commandBuffer[end - 2] == '.') {
         indexDecimal = end - 2;
         partDecimal = float(commandBuffer[end - 1] - '0')/10.0f + float(commandBuffer[end] - '0')/100.0f;
     }
@@ -274,15 +327,67 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end){
     // If this case, then only ones.
     if (start == indexDecimal - 1) {
         partWhole = float(commandBuffer[start] - '0');
-    // Tens and ones.
+        // Tens and ones.
     } else if (start == indexDecimal - 2) {
         partWhole = (float(commandBuffer[start] - '0') * 10.0f) + float(commandBuffer[start + 1] - '0');
-    // Hundreds, tens, and ones.
+        // Hundreds, tens, and ones.
     } else {
         partWhole = (float(commandBuffer[start] - '0') * 100.0f) + (float(commandBuffer[start + 1] - '0') * 10.0f) + float(commandBuffer[start + 2] - '0');
     }
 
     return (partWhole + partDecimal) * isPositive;
+
+}
+
+void resetThreads()
+{
+
+    pc.printf("Resetting threads\r\n");
+
+    if(singingSpeedThread->get_state()!=0 && singingSpeedThread->get_state()!=10) {
+        singingSpeedThread->terminate();
+        pc.printf("sing 1\r\n");
+        delete singingSpeedThread;
+        pc.printf("sing 2\r\n");
+        singingSpeedThread = new Thread(osPriorityNormal, 1024);
+        pc.printf("sing 3\r\n");
+    }
+
+    if(playsNotesThread->get_state()!=0 && playsNotesThread->get_state()!=10) {
+        playsNotesThread->terminate();
+        pc.printf("play 1\r\n");
+        delete playsNotesThread;
+        pc.printf("play 2\r\n");
+        playsNotesThread = new Thread(osPriorityNormal, 2048);
+        pc.printf("play 3\r\n");
+    }
+
+    if(brakeRevCountThread->get_state()!=0 && brakeRevCountThread->get_state()!=10) {
+        brakeRevCountThread->terminate();
+        pc.printf("revCount 1\r\n");
+        delete brakeRevCountThread;
+        pc.printf("revCount 2\r\n");
+        brakeRevCountThread = new Thread(osPriorityNormal, 2048);
+        pc.printf("revCount 3\r\n");
+    }
+
+    if(speedPIDThread->get_state()!=0 && speedPIDThread->get_state()!=10) {
+        speedPIDThread->terminate();
+        pc.printf("speedPID 1\r\n");
+        delete speedPIDThread;
+        pc.printf("speedPID 2\r\n");
+        speedPIDThread = new Thread(osPriorityNormal, 4096);
+        pc.printf("speedPID 3\r\n");
+    }
+
+    if(fixedSpeedThread->get_state()!=0 && fixedSpeedThread->get_state()!=10) {
+        fixedSpeedThread->terminate();
+        pc.printf("fixedSpeed 1\r\n");
+        delete fixedSpeedThread;
+        pc.printf("fixedSpeed 2\r\n");
+        fixedSpeedThread = new Thread(osPriorityNormal, 1024);
+        pc.printf("fixedSpeed 3\r\n");
+    }
 
 }
 
@@ -301,6 +406,13 @@ int main()
     int indexV = 0;
     bool found = false;
 
+
+//    singingSpeedThread = new Thread(osPriorityNormal, 1024);
+//    playsNotesThread = new Thread(osPriorityNormal, 2048);
+//    brakeRevCountThread = new Thread(osPriorityNormal, 2048);
+//    speedPIDThread = new Thread(osPriorityNormal, 8192);
+//    fixedSpeedThread = new Thread(osPriorityNormal, 1024);
+
     // speedTimer.reset();
     // speedTimer.start();
     // I3.mode(PullNone);
@@ -312,6 +424,8 @@ int main()
 
     // controller.setInterval(PIDrate);
     // controller.setMode(0);
+
+    // resetThreads();
 
     while(1) {
 
@@ -340,8 +454,8 @@ int main()
             indexV = 0;
             found = false;
 
-            while(indexV <= index && !found){
-                if(command[indexV] == 'V'){
+            while(indexV <= index && !found) {
+                if(command[indexV] == 'V') {
                     found = true;
                 }
                 indexV++;
@@ -360,22 +474,35 @@ int main()
 			L2L.write(1.0f);
 			L3L.write(1.0f);
 
+			// Remove threads
+            resetThreads();
+
             //Analyse the input string
             switch (command[0]) {
-                // Commands to kill all threads
-                // Reset all values to zero
+                    // Commands to kill all threads
+                    // Reset all values to zero
 
-                // Only V
+                    // Only V
                 case 'V':
+
+//                    speedPIDThread = new Thread(osPriorityNormal, 4096);
+                    fixedSpeedThread = new Thread(osPriorityNormal, 1024);
                     // index is EOL, index - 1 is last char
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
                     // Run thread.
+                    I3.rise(&rps);
+                    fixedSpeedWait = 1/(6*desiredSpeedValue);
+                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+//                    speedPIDThread->start(&VPID);
+                    fixedSpeedThread->start(&fixedSpeed);
+
+                    speedController.setSetPoint(desiredSpeedValue);
                     break;
 
-                // Is R first.
+                    // Is R first.
                 case 'R':
                     // V also exists, because indexV before index (EOL)
-                    if (indexV < index){
+                    if (indexV < index) {
                         desiredRevolutions = charsToFloat(command, 1, indexV - 1);
                         desiredSpeedValue = charsToFloat(command, indexV + 1, index - 1);
                         // Run thread.
@@ -386,7 +513,7 @@ int main()
                         // Run thread.
                     }
                     break;
-                // Needs to sing
+                    // Needs to sing
                 case 'T':
                    numberNotes = charstoNotes(command, 1, index - 1);
                    // Run normal speed thread
@@ -402,10 +529,10 @@ int main()
 				case 'B':
 					brakeRevCount = 0;
 					motorHigh = CWHigh[1];
-					motorLow = CWLow[1];
-					// L1L = CWL1L[1];
-					// L2L = CWL2L[1];
-					// L3L = CWL3L[1];
+					// motorLow = CWLow[1];
+					L1L = CWL1L[1];
+					L2L = CWL2L[1];
+					L3L = CWL3L[1];
 					I3.mode(PullNone);
 				    I3.rise(&brakeCount);
 					// brakeRevCountThread.start(brakeCount);
@@ -425,8 +552,8 @@ int main()
             pc.printf(" desiredRevolutions: %3.2f\n\r", desiredRevolutions);
 
             // Clear buffer
-            for(index = 0; index < 49; index++){
-              command[index] = 0;
+            for(index = 0; index < 49; index++) {
+                command[index] = 0;
             }
         }
         wait(0.01);
