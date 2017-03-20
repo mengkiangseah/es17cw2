@@ -2,13 +2,16 @@
 //Pin assignment declarations
 //***************************************************
 
+
+//NOT ACCOMMODATING THAT ONE (D9) CANNOT BE PWM OUT
+
 //Photointerrupter input pins
 #define I1pin D2
 #define I2pin D11
 #define I3pin D12
 
 //Incremental encoder input pins
-#define CHA   D7
+#define CHA   D7  //QUADRATURE_PIN
 #define CHB   D8
 
 //Motor Drive output pins   //Mask in output byte
@@ -23,7 +26,7 @@
 //Function for reading the photointerrupter states
 //***************************************************
 
-//One input at least will need to be an InterruptIn for rps function
+//One input at least will need to be an InterruptIn for rps functions
 DigitalIn I1(I1pin);
 DigitalIn I2(I2pin);
 DigitalIn I3(I3pin);
@@ -52,10 +55,19 @@ inline void motorStop()
 //***************************************************
 
 int8_t CWLow[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
+<<<<<<< HEAD
+int8_t CWHigh[6] = {0x6, 0x3, 0x3, 0x5, 0x5, 0x6};
+
+int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
+int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
+
+bool spinCW = True;
+=======
 int8_t CWHigh[6] = {0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
 
 int8_t ACWLow[6] = {0x4, 0x1, 0x1, 0x2, 0x2, 0x4};
 int8_t ACWHigh[6] = {0x5, 0x5, 0x3, 0x3, 0x6, 0x6};
+>>>>>>> b910c3d07d66fc2800669c051b13b6fceab7410d
 
 //DEPENDS ON HOW WE IMPLEMENT THE MOTOR CONTROL PINS
 void motorOut(int8_t driveState)
@@ -86,6 +98,8 @@ float measuredSpeed = 0;
 
 PIN.rise(&rps);
 
+float position = 0; // variable to store actual rotational position of the motor. Photointerrupt is 0deg
+
 //Don't forget to start the timer in the main loop before
 //attaching the interrupt
 
@@ -98,6 +112,7 @@ void rps()
 
 	//1000ms over the timer to calculate the speed
 	measuredSpeed = 1000/(revTimer);
+	position = 0;
 }
 
 //***************************************************
@@ -208,11 +223,11 @@ float distanceTarget = 0.0;
 int8_t countRevs = 0;
 
 //PID controller output
-float distanceOutput = 0.0;
+// float distanceOutput = 0.0;
 float distanceLimit = 5.0;
 
 //Wait value for fixed speed operation
-float fixeddistanceWait = 0;
+// float fixeddistanceWait = 0;
 
 //Initialise PID controller
 PID distanceController(distanceKc, distanceTi, distanceTd, distancePIDrate);
@@ -266,6 +281,7 @@ void rps_counter()
 	measuredSpeed = 1000/(revTimer);
 
 	countRevs++;
+	position = 0;
 
 }
 
@@ -273,16 +289,15 @@ void rps_counter()
 //Quadrature mode interrupts and controllers
 //***************************************************
 
-InterruptIn QUADRATURE_PIN;
+InterruptIn QUADRATURE_PIN(CHA);
 
-uint8_t quadCount = 0;
-
-PIN.rise(&quadrature_counter);
+// WARNING	only attach at low speeds, otherwise it will trigger too often
+QUADRATURE_PIN.rise(&quadrature_counter);
 
 //Don't forget to start the timer in the main loop before
 //attaching the interrupt
 
 void quadrature_counter()
 {
-	quadCount++;
+	position = position + 3.07;	
 }
