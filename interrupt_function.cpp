@@ -299,7 +299,5 @@ QUADRATURE_PIN.rise(&quadrature_counter);
 
 void quadrature_counter()
 {
-
 	position = position + 3.07;	
-
 }
