@@ -79,6 +79,7 @@ float measuredVelocity = 0.0f;
 int8_t numberNotes = 0;
 int8_t notePointer = 0;
 bool spinCW = true;
+int8_t brakeRevCount = 0;
 
 // Drive states
 int8_t CWLow[7] = {0x0, 0x2, 0x2, 0x1, 0x1, 0x4, 0x4};
@@ -97,6 +98,7 @@ const float frequencyTable[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8
 // List of threads.
 Thread singingSpeedThread;
 Thread playsNotesThread;
+Thread brakeRevCountThread;
 
 // Reads the state.
 inline int8_t readRotorState(){
@@ -134,8 +136,14 @@ void singingSpeed(){
         motorLow = 0x0;
         motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
         motorLow = CWLow[(I1 + I2*2 + I3*4)];
-        Thread::wait(4.0f);
+        // Thread::wait(4.0f);
     }
+}
+
+void brakeCount(){
+	// while(1){
+		brakeRevCount++;
+	// }
 }
 
 // Function running in playsNotesThread,
@@ -398,6 +406,18 @@ int main()
                    // Run singing thread
                 //    playNotesThread.start(playNotes);
                     break;
+				// Braking function
+				case 'B':
+					brakeRevCount = 0;
+					motorHigh = CWHigh[1];
+					motorLow = CWLow[1];
+					I3.mode(PullNone);
+				    I3.rise(&brakeCount);
+					// brakeRevCountThread.start(brakeCount);
+					break;
+				case 'C':
+					pc.prinf("Brake Count: %d\n\r", brakeRevCount);
+					break;
                 // If something weird comes along.
                 default:
                     // Commands to kill all threads
