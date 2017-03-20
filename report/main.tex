@@ -1,12 +1,9 @@
-\documentclass[a4paper]{article}
+\documentclass[a4paper, 10pt, conference]{ieeeconf}
 
 %% Language and font encodings
 \usepackage[english]{babel}
 \usepackage[utf8x]{inputenc}
 \usepackage[T1]{fontenc}
-
-%% Sets page size and margins
-\usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{geometry}
 
 %% Useful packages
 \usepackage{amsmath}
@@ -14,27 +11,26 @@
 \usepackage[colorinlistoftodos]{todonotes}
 \usepackage[colorlinks=true, allcolors=black]{hyperref}
 \usepackage{subfiles}
-% \def\thesubsection{\alph{subsection}}
-\usepackage{multirow}
-\usepackage{titlesec}
-\usepackage{listings}
-\usepackage{pdfpages}
-\usepackage{marvosym}
+\usepackage{booktabs}
 
-
-\lstset{
-	commentstyle=\color{green},
-	frame=single	
+\title{Brushless Motor Controller \\ Embedded Systems Coursework}
+\author{Martin Opatovsky, David Salmon, Meng Kiang Seah\\
+Electrical \& Electronic Engineering Department\\
+Imperial College London, London SW7 2AZ\\
+\textbf{Email:} \{mo1013, ds2713, mks211\} @ ic.ac.uk\\
 }
 
-\title{}
-\author{David Salmon - 00822240\\
-\textbf{Email:} david.salmon13@imperial.ac.uk}
 \begin{document}
-
 \maketitle
+
+\begin{abstract}
+\subfile{abstract.tex}
+\end{abstract}
 
 \section{Introduction}
 \subfile{introduction.tex}
+
+\bibliographystyle{unsrt}
+\bibliography{biblio}
 
 \end{document}
