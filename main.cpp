@@ -58,6 +58,7 @@ volatile float desiredSpeedValue = 0.0f;
 volatile float desiredRevolutions = 0.0f;
 volatile float measuredSpeed = 0.0f;
 volatile bool spinCW = true;
+volatile bool isSinging = false;
 //Wait value for fixed speed operation
 volatile float fixedSpeedWait = 0;
 
@@ -85,13 +86,13 @@ volatile float revTimer = 0;
 const int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
 const int8_t ACWHigh[7] = {0x0, 0x3, 0x5, 0x3, 0x6, 0x6, 0x5};
 
-const int8_t CWL1L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
-const int8_t CWL2L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
-const int8_t CWL3L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
+const float CWL1L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0};
+const float CWL2L[7] = {0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0};
+const float CWL3L[7] = {0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
 
-const int8_t ACWL1L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
-const int8_t ACWL2L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
-const int8_t ACWL3L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
+const float ACWL1L[7] = {0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0};
+const float ACWL2L[7] = {0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+const float ACWL3L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0};
 
 // To store notes
 volatile int8_t noteArray[8] = {0};
@@ -114,7 +115,6 @@ void playNotes(){
     while(1){
         int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
         int currentTime = timeArray[notePointer];
-//        pc.printf("Note: %d Time: %d\n\r", currentPeriod, currentTime);
         L1L.period_us(currentPeriod);
         L2L.period_us(currentPeriod);
         L3L.period_us(currentPeriod);
@@ -126,7 +126,7 @@ void playNotes(){
 void VPID()
 {
     while(1) {
-//        clk = !clk;
+        clk = !clk;
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
@@ -143,28 +143,41 @@ void rps()
 
     //1000ms over the timer to calculate the speed
     measuredSpeed = 1000/(revTimer);
-    // position = 0;
 }
 
 void fixedSpeed()
 {
     while(1) {
-        clk = !clk;
         motorHigh = 0x7;
-        // motorLow = 0x0;
-        L1L = 0x0;
-        L2L = 0x0;
-        L3L = 0x0;
-        motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
-        // motorLow = CWLow[(I1 + I2*2 + I3*4)];
-        L1L = CWL1L[(I1 + I2*2 + I3*4)];
-        L2L = CWL2L[(I1 + I2*2 + I3*4)];
-        L3L = CWL3L[(I1 + I2*2 + I3*4)];
+        L1L = 0;
+        L2L = 0;
+        L3L = 0;
+
+        if(spinCW){
+            motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
+            L1L = CWL1L[(I1 + I2*2 + I3*4)];
+            L2L = CWL2L[(I1 + I2*2 + I3*4)];
+            L3L = CWL3L[(I1 + I2*2 + I3*4)];
+        }
+
+        else{
+            motorHigh = ACWHigh[(I1 + I2*2 + I3*4)];
+            L1L = ACWL1L[(I1 + I2*2 + I3*4)];
+            L2L = ACWL2L[(I1 + I2*2 + I3*4)];
+            L3L = ACWL3L[(I1 + I2*2 + I3*4)];
+        }
+
+        if(isSinging){
+            L1L /= 2;
+            L2L /= 2;
+            L3L /= 2;
+        }
+
         Thread::wait(fixedSpeedWait);
     }
 }
 
-//Converts char array from start to end into float
+// Converts char array from start to end into float
 // Returns number of notes
 int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end)
 {
@@ -323,23 +336,17 @@ void resetThreads()
 
     if(playNotesThread->get_state()!=0 && playNotesThread->get_state()!=10) {
         playNotesThread->terminate();
-        pc.printf("play 1\r\n");
         playNotesThread->join();
-        pc.printf("play 2\r\n");
     }
 
     if(speedPIDThread->get_state()!=0 && speedPIDThread->get_state()!=10) {
         speedPIDThread->terminate();
-        pc.printf("speedPID 1\r\n");
         speedPIDThread->join();
-        pc.printf("speedPID 2\r\n");
     }
 
     if(fixedSpeedThread->get_state()!=0 && fixedSpeedThread->get_state()!=10) {
         fixedSpeedThread->terminate();
-        pc.printf("fixedSpeed 1\r\n");
         fixedSpeedThread->join();
-        pc.printf("fixedSpeed 2\r\n");
     }
 
 }
@@ -373,21 +380,33 @@ int main()
 
     while(1) {
 
-        //If there's a character to read from the serial port
+        // If there's a character to read from the serial port
         if (pc.readable()) {
 
-            //Clear counters
+            // Turn off.
+            motorHigh = 0x7;
+            L1L = 0;
+            L2L = 0;
+            L3L = 0;
+
+            // Ensure singing off.
+            isSinging = false;
+
+            // Remove threads
+            resetThreads();
+
+            // Clear counters
             index = 0;
 
-            //Read each value from the serial port until Enter key is pressed
+            // Read each value from the serial port until Enter key is pressed
             do {
-                //Read character
+                // Read character
                 ch = pc.getc();
-                //Print character to serial for visual feedback
+                // Print character to serial for visual feedback
                 pc.putc(ch);
-                //Add character to input array
+                // Add character to input array
                 command[index++] = ch;  // put it into the value array and increment the index
-                //d10 and d13 used for detecting Enter key on Windows/Unix/Mac
+                // d10 and d13 used for detecting Enter key on Windows/Unix/Mac
             } while(ch != 10 && ch != 13);
 
             // 10 and 13 are basically EOL symbols
@@ -409,17 +428,9 @@ int main()
             indexV--;
             // IndexV is now V, or EOL.
 
-            //Start new line on terminal for printing data
+            // Start new line on terminal for printing data
             pc.putc('\n');
             pc.putc('\r');
-
-            // Set PWM back to 100%
-            L1L.write(1.0f);
-            L2L.write(1.0f);
-            L3L.write(1.0f);
-
-            // Remove threads
-            resetThreads();
 
             //Analyse the input string
             switch (command[0]) {
@@ -437,9 +448,9 @@ int main()
                     fixedSpeedWait = 1000/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
                     // Run threads.
-                    pc.printf("Starting Motor Thread");
+                    pc.printf("Starting Motor Thread\r\n");
                     fixedSpeedThread->start(&fixedSpeed);
-                    pc.printf("Starting PID Thread.");
+                    pc.printf("Starting PID Thread.\r\n");
                     speedPIDThread->start(&VPID);
                     break;
 
@@ -466,10 +477,8 @@ int main()
                     fixedSpeedThread->start(&fixedSpeed);
                     notePointer = 0;
                     // Run singing thread
-                    L1L.write(0.5f);
-                    L2L.write(0.5f);
-                    L3L.write(0.5f);
                     pc.printf("Singing beginning.\r\n");
+                    isSinging = true;
                     playNotesThread->start(&playNotes);
                     break;
 
