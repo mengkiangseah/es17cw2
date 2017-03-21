@@ -112,14 +112,14 @@ void brakeCount(){
 // Function running in playNotesThread,
 void playNotes(){
     while(1){
-		int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
-		int currentTime = timeArray[notePointer];
-		L1L.period_ms(currentPeriod);
-		L2L.period_ms(currentPeriod);
-		L3L.period_ms(currentPeriod);
-		notePointer = (notePointer + 1) % numberNotes;
-		Thread::wait(currentTime);
-	}
+        int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
+        int currentTime = timeArray[notePointer];
+        L1L.period_ms(currentPeriod);
+        L2L.period_ms(currentPeriod);
+        L3L.period_ms(currentPeriod);
+        notePointer = (notePointer + 1) % numberNotes;
+        Thread::wait(currentTime);
+    }
 }
 
 void VPID()
@@ -149,17 +149,17 @@ void fixedSpeed()
 {
     while(1) {
         clk = !clk;
-		motorHigh = 0x7;
-		// motorLow = 0x0;
-		L1L = 0x0;
-		L2L = 0x0;
-		L3L = 0x0;
+        motorHigh = 0x7;
+        // motorLow = 0x0;
+        L1L = 0x0;
+        L2L = 0x0;
+        L3L = 0x0;
         motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
-		// motorLow = CWLow[(I1 + I2*2 + I3*4)];
-		L1L = CWL1L[(I1 + I2*2 + I3*4)];
-		L2L = CWL2L[(I1 + I2*2 + I3*4)];
-		L3L = CWL3L[(I1 + I2*2 + I3*4)];
-		Thread::wait(fixedSpeedWait);
+        // motorLow = CWLow[(I1 + I2*2 + I3*4)];
+        L1L = CWL1L[(I1 + I2*2 + I3*4)];
+        L2L = CWL2L[(I1 + I2*2 + I3*4)];
+        L3L = CWL3L[(I1 + I2*2 + I3*4)];
+        Thread::wait(fixedSpeedWait);
     }
 }
 
@@ -348,9 +348,9 @@ int main()
 {
     pc.printf("Startup!\n\r");
     motorHigh = 0x7;
-	L1L = 0x0;
-	L2L = 0x0;
-	L3L = 0x0;
+    L1L = 0x0;
+    L2L = 0x0;
+    L3L = 0x0;
 
     // Input buffer
     char command[ARRAYSIZE] = {0};
@@ -360,10 +360,10 @@ int main()
     int indexV = 0;
     bool found = false;
 
-	// New threads.
-	speedPIDThread = new Thread(osPriorityNormal, 8192);
-	fixedSpeedThread = new Thread(osPriorityNormal, 512);
-	playNotesThread = new Thread(osPriorityNormal, 512);
+    // New threads.
+    speedPIDThread = new Thread(osPriorityNormal, 8192);
+    fixedSpeedThread = new Thread(osPriorityNormal, 512);
+    playNotesThread = new Thread(osPriorityNormal, 512);
 
     while(1) {
 
@@ -407,18 +407,12 @@ int main()
             pc.putc('\n');
             pc.putc('\r');
 
-			// Set PWM back to 100%
-			L1L.write(1.0f);
-			L2L.write(1.0f);
-			L3L.write(1.0f);
+            // Set PWM back to 100%
+            L1L.write(1.0f);
+            L2L.write(1.0f);
+            L3L.write(1.0f);
 
-            L1L.period(1.0);
-            L2L.period(1.0);
-            L3L.period(1.0);
-
-
-
-			// Remove threads
+            // Remove threads
             resetThreads();
 
             //Analyse the input string
@@ -428,16 +422,16 @@ int main()
                 case 'V':
                     // index is EOL, index - 1 is last char
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
-					speedController.setSetPoint(desiredSpeedValue);
-					// Start interrupts
-					speedTimer.reset();
-					speedTimer.start();
+                    speedController.setSetPoint(desiredSpeedValue);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
                     I3.rise(&rps);
-					// Begin!
+                    // Begin!
                     fixedSpeedWait = 1/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
-					// Run threads.
-					// speedPIDThread->start(&VPID);
+                    // Run threads.
+                    // speedPIDThread->start(&VPID);
                     fixedSpeedThread->start(&fixedSpeed);
                     break;
 
@@ -456,33 +450,36 @@ int main()
                     }
                     break;
 
-				// Needs to sing
+                // Needs to sing
                 case 'T':
-                	numberNotes = charstoNotes(command, 1, index - 1);
-                	// Run normal speed thread
-					fixedSpeedWait = 4.0f;
-					fixedSpeedThread->start(&fixedSpeed);
-					notePointer = 0;
-                	// Run singing thread
-					L1L.write(0.5f);
-					L2L.write(0.5f);
-					L3L.write(0.5f);
-					playNotesThread->start(&playNotes);
-					break;
+                    numberNotes = charstoNotes(command, 1, index - 1);
+                    // Run normal speed thread
+                    fixedSpeedWait = 4.0f;
+                    fixedSpeedThread->start(&fixedSpeed);
+                    notePointer = 0;
+                    // Run singing thread
+                    pc.printf("PWM starting\r\n");
+                    L1L = 0.5;
+//                    L1L.write(0.5f);
+//                    L2L.write(0.5f);
+//                    L3L.write(0.5f);
+                    pc.printf("PWM successful\r\n");
+                    playNotesThread->start(&playNotes);
+                    break;
 
-				// Braking function
-				case 'B':
-					brakeRevCount = 0;
-					I3.mode(PullNone);
-					I3.rise(&brakeCount);
-					motorHigh = CWHigh[1];
-					L1L = CWL1L[1];
-					L2L = CWL2L[1];
-					L3L = CWL3L[1];
-					break;
-				case 'C':
-					pc.printf("Brake Count: %d\n\r", brakeRevCount);
-					break;
+                // Braking function
+                case 'B':
+                    brakeRevCount = 0;
+                    I3.mode(PullNone);
+                    I3.rise(&brakeCount);
+                    motorHigh = CWHigh[1];
+                    L1L = CWL1L[1];
+                    L2L = CWL2L[1];
+                    L3L = CWL3L[1];
+                    break;
+                case 'C':
+                    pc.printf("Brake Count: %d\n\r", brakeRevCount);
+                    break;
                 // If something weird comes along.
                 default:
                     // Commands to kill all threads
