@@ -168,9 +168,9 @@ void fixedSpeed()
         }
 
         if(isSinging){
-            L1L /= 2;
-            L2L /= 2;
-            L3L /= 2;
+            L1L = L1L/2.0;
+            L2L = L2L/2.0;
+            L3L = L3L/2.0;
         }
 
         Thread::wait(fixedSpeedWait);
@@ -198,7 +198,7 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end)
         // If the 2nd charater is # or ^, it is three characters long.
         if(commandBuffer[current_ptr+1] == '#' || commandBuffer[current_ptr+1] == '^') {
             // The 3rd char is the length.
-            timeArray[note_ptr] = commandBuffer[current_ptr+2] - '0';
+            timeArray[note_ptr] = (commandBuffer[current_ptr+2] - '0')*1000;
             // Match 1st char to the note.
             switch (commandBuffer[current_ptr]) {
                 case 'C':
@@ -247,7 +247,7 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end)
         // Otherwise, command is 2 characters long.
         else {
             // 2nd char is time.
-            timeArray[note_ptr] = commandBuffer[current_ptr+2] - '0';
+            timeArray[note_ptr] = (commandBuffer[current_ptr+2] - '0')*1000;
             // 1st char is note.
             switch (commandBuffer[current_ptr]) {
                 case 'C':
@@ -370,8 +370,8 @@ int main()
 
     // New threads.
     speedPIDThread = new Thread(osPriorityNormal, 2048);
-    fixedSpeedThread = new Thread(osPriorityNormal, 256);
-    playNotesThread = new Thread(osPriorityNormal, 256);
+    fixedSpeedThread = new Thread(osPriorityNormal, 512);
+    playNotesThread = new Thread(osPriorityNormal, 512);
 
     // Interrrupt
     I3.mode(PullNone);
@@ -473,7 +473,7 @@ int main()
                 case 'T':
                     numberNotes = charstoNotes(command, 1, index - 1);
                     // Run normal speed thread
-                    fixedSpeedWait = 4.0f;
+                    fixedSpeedWait = 8.0f;
                     fixedSpeedThread->start(&fixedSpeed);
                     notePointer = 0;
                     // Run singing thread
