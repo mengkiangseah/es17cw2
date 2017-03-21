@@ -412,6 +412,12 @@ int main()
 			L2L.write(1.0f);
 			L3L.write(1.0f);
 
+            L1L.period(1.0);
+            L2L.period(1.0);
+            L3L.period(1.0);
+
+
+
 			// Remove threads
             resetThreads();
 
