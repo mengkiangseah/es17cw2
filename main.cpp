@@ -70,9 +70,9 @@ volatile int8_t brakeRevCount = 0;
 
 //PID controller configuration
 volatile float speedPIDrate = 0.5;
-volatile float speedKc = 20.0;
-volatile float speedTi = 0.4;
-volatile float speedTd = 0.1;
+volatile float speedKc = 0.2;
+volatile float speedTi = 1.0;
+volatile float speedTd = 0.01;
 
 //PID controller output
 volatile float speedOutput = 0;
@@ -148,7 +148,8 @@ void rps()
     speedTimer.start();
     //1000ms over the timer to calculate the speed, moving average with previous one.
     if(revTimer != 0)
-        measuredSpeed = 1000/(revTimer);
+        measuredSpeed = 0.5*measuredSpeed + 500/(revTimer);
+//        measuredSpeed = 1000/(revTimer);
     // Carry on.
     I3.enable_irq();
 }
