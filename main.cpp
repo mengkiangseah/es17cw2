@@ -141,8 +141,8 @@ void rps()
     speedTimer.reset();
     speedTimer.start();
 
-    //1000ms over the timer to calculate the speed
-    measuredSpeed = 1000/(revTimer);
+    //1000ms over the timer to calculate the speed, moving average with previous one.
+    measuredSpeed = 0.5 * measuredSpeed + 500/(revTimer);
 }
 
 void fixedSpeed()
@@ -356,9 +356,9 @@ int main()
 {
     pc.printf("Startup!\n\r");
     motorHigh = 0x7;
-    L1L = 0x0;
-    L2L = 0x0;
-    L3L = 0x0;
+    L1L = 0;
+    L2L = 0;
+    L3L = 0;
 
     // Input buffer
     char command[ARRAYSIZE] = {0};
@@ -379,7 +379,7 @@ int main()
     I3.disable_irq();
 
     while(1) {
-
+        pc.printf("measuredSpeed: %3.3f, fixedSpeedWait: %3.3f\r\n", measuredSpeed, fixedSpeedWait);
         // If there's a character to read from the serial port
         if (pc.readable()) {
 
@@ -506,7 +506,7 @@ int main()
                     break;
             }
 
-            pc.printf("desiredSpeed: %3.2f ", desiredSpeedValue);
+            pc.printf("desiredSpeed: %3.2f, ", desiredSpeedValue);
             pc.printf(" desiredRevolutions: %3.2f\n\r", desiredRevolutions);
 
             // Clear buffer
