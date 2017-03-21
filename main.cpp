@@ -361,9 +361,9 @@ int main()
     bool found = false;
 
 	// New threads.
-	speedPIDThread = new Thread(osPriorityNormal, 4096);
-	fixedSpeedThread = new Thread(osPriorityNormal, 1024);
-	playNotesThread = new Thread(osPriorityNormal, 1024);
+	speedPIDThread = new Thread(osPriorityNormal, 8192);
+	fixedSpeedThread = new Thread(osPriorityNormal, 512);
+	playNotesThread = new Thread(osPriorityNormal, 512);
 
     while(1) {
 
@@ -431,7 +431,7 @@ int main()
                     fixedSpeedWait = 1/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
 					// Run threads.
-					speedPIDThread->start(&VPID);
+					// speedPIDThread->start(&VPID);
                     fixedSpeedThread->start(&fixedSpeed);
                     break;
 
