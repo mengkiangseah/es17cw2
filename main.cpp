@@ -106,6 +106,7 @@ Thread* playNotesThread;
 Thread* speedPIDThread;
 Thread* fixedSpeedThread;
 
+// For counting revolutions during braking.
 void brakeCount(){
     brakeRevCount++;
 }
@@ -123,6 +124,7 @@ void playNotes(){
     }
 }
 
+// Function in PID thread.
 void VPID()
 {
     while(1) {
@@ -134,6 +136,7 @@ void VPID()
     }
 }
 
+// Interrupt function.
 void rps()
 {
     speedTimer.stop();
@@ -142,9 +145,10 @@ void rps()
     speedTimer.start();
 
     //1000ms over the timer to calculate the speed, moving average with previous one.
-    measuredSpeed = 0.5 * measuredSpeed + 500/(revTimer);
+    measuredSpeed = 1000/(revTimer);
 }
 
+// Advances states at specified rate.
 void fixedSpeed()
 {
     while(1) {
@@ -179,7 +183,7 @@ void fixedSpeed()
 
 // Converts char array from start to end into float
 // Returns number of notes
-int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end)
+int8_t charToNotes(char* commandBuffer, int8_t start, int8_t end)
 {
     // Start of first note.
     int8_t current_ptr = start;
@@ -471,7 +475,7 @@ int main()
 
                 // Needs to sing
                 case 'T':
-                    numberNotes = charstoNotes(command, 1, index - 1);
+                    numberNotes = charToNotes(command, 1, index - 1);
                     // Run normal speed thread
                     for(notePointer = 0; notePointer < numberNotes; notePointer++){
                         pc.printf("Note: %d, Time: %d.\r\n", noteArray[notePointer], timeArray[notePointer]);
@@ -485,19 +489,32 @@ int main()
                     playNotesThread->start(&playNotes);
                     break;
 
-                // // Braking function
-                // case 'B':
-                //     brakeRevCount = 0;
-                //     I3.mode(PullNone);
-                //     I3.rise(&brakeCount);
-                //     motorHigh = CWHigh[1];
-                //     L1L = CWL1L[1];
-                //     L2L = CWL2L[1];
-                //     L3L = CWL3L[1];
-                //     break;
-                // case 'C':
-                //     pc.printf("Brake Count: %d\n\r", brakeRevCount);
-                //     break;
+                //Calibration speedKc, speedTi, speedTd
+                case 'K':
+                    speedKc = charsToFloat(command, 1, index - 1);
+                    break;
+                case 'I':
+                    speedTi = charsToFloat(command, 1, index - 1);
+                    break;
+                case 'D':
+                    speedTd = charsToFloat(command, 1, index - 1);
+                    break;
+
+                // Braking function
+                case 'B':
+                    I3.mode(PullNone);
+                    I3.rise(&brakeCount);
+                    I3.enable_irq();
+                    brakeRevCount = 0;
+                    motorHigh = CWHigh[1];
+                    L1L = CWL1L[1];
+                    L2L = CWL2L[1];
+                    L3L = CWL3L[1];
+                    break;
+                case 'C':
+                    pc.printf("Brake Count: %d\n\r", brakeRevCount);
+                    break;
+
                 // If something weird comes along.
                 default:
                     // Commands to kill all threads
