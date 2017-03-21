@@ -96,7 +96,7 @@ const float ACWL3L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0};
 
 // To store notes
 volatile int8_t noteArray[8] = {0};
-volatile int8_t timeArray[8] = {0};
+volatile int16_t timeArray[8] = {0};
 
 // Mapping note to frequency
 const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 200.8826, 189.6079, 178.966, 168.9215, 159.4406, 150.4919, 142.0455, 134.0731, 126.5481, 119.4455};
