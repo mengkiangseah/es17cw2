@@ -69,10 +69,10 @@ volatile int8_t notePointer = 0;
 volatile int8_t brakeRevCount = 0;
 
 //PID controller configuration
-volatile float speedPIDrate = 0.2;
-volatile float speedKc = 0.2;
-volatile float speedTi = 0.8;
-volatile float speedTd = 0.0;
+volatile float speedPIDrate = 0.5;
+volatile float speedKc = 20.0;
+volatile float speedTi = 0.4;
+volatile float speedTd = 0.1;
 
 //PID controller output
 volatile float speedOutput = 0;
@@ -132,7 +132,7 @@ void VPID()
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
-        Thread::wait(800);
+        Thread::wait(500);
     }
 }
 
@@ -390,7 +390,7 @@ int main()
     I3.disable_irq();
 
     while(1) {
-        pc.printf("measuredSpeed: %3.3f, fixedSpeedWait: %3.3f\r\n", measuredSpeed, fixedSpeedWait);
+        // pc.printf("measuredSpeed: %3.3f, fixedSpeedWait: %3.3f, K: %3.3f, I: %3.3f, D: %3.3f\r\n", measuredSpeed, fixedSpeedWait, speedKc, speedTi, speedTd);
         // If there's a character to read from the serial port
         if (pc.readable()) {
 
