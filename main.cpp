@@ -132,7 +132,7 @@ void VPID()
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
-        Thread::wait(speedPIDrate);
+        Thread::wait(200);
     }
 }
 
