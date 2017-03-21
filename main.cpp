@@ -132,7 +132,7 @@ void VPID()
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
-        Thread::wait(200);
+        Thread::wait(800);
     }
 }
 
@@ -147,7 +147,8 @@ void rps()
     speedTimer.reset();
     speedTimer.start();
     //1000ms over the timer to calculate the speed, moving average with previous one.
-    measuredSpeed = 1000/(revTimer);
+    if(revTimer != 0)
+        measuredSpeed = 1000/(revTimer);
     // Carry on.
     I3.enable_irq();
 }
