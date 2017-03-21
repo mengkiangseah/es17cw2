@@ -139,13 +139,17 @@ void VPID()
 // Interrupt function.
 void rps()
 {
+    // Disable during this function.
+    I3.disable_irq();
+    // Calculation of speed.
     speedTimer.stop();
     revTimer = speedTimer.read_ms();
     speedTimer.reset();
     speedTimer.start();
-
     //1000ms over the timer to calculate the speed, moving average with previous one.
     measuredSpeed = 1000/(revTimer);
+    // Carry on.
+    I3.enable_irq();
 }
 
 // Advances states at specified rate.
@@ -333,9 +337,11 @@ float charsToFloat(char* commandBuffer, int8_t start, int8_t end)
 
 }
 
+// Every new command.
 void resetThreads()
 {
-
+    // Only needed if a thread is running, so if not inactive or idle.
+    // Terminate, then join.
     pc.printf("Resetting threads...\r\n");
 
     if(playNotesThread->get_state()!=0 && playNotesThread->get_state()!=10) {
@@ -393,6 +399,9 @@ int main()
             L2L = 0;
             L3L = 0;
 
+            // Remove interrupts
+            I3.disable_irq();
+
             // Ensure singing off.
             isSinging = false;
 
@@ -449,7 +458,7 @@ int main()
                     speedTimer.start();
                     I3.enable_irq();
                     // Begin!
-                    fixedSpeedWait = 1000/(6*desiredSpeedValue);
+                    fixedSpeedWait = 0.001;
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
@@ -492,12 +501,54 @@ int main()
                 //Calibration speedKc, speedTi, speedTd
                 case 'K':
                     speedKc = charsToFloat(command, 1, index - 1);
+                    speedController.setTunings(speedKc, speedTi, speedTd);
+                    speedController.setSetPoint(desiredSpeedValue);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
+                    I3.enable_irq();
+                    // Begin!
+                    fixedSpeedWait = 0.001;
+                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+                    // Run threads.
+                    pc.printf("Starting Motor Thread\r\n");
+                    fixedSpeedThread->start(&fixedSpeed);
+                    pc.printf("Starting PID Thread.\r\n");
+                    speedPIDThread->start(&VPID);
                     break;
                 case 'I':
                     speedTi = charsToFloat(command, 1, index - 1);
+                    speedController.setTunings(speedKc, speedTi, speedTd);
+                    speedController.setSetPoint(desiredSpeedValue);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
+                    I3.enable_irq();
+                    // Begin!
+                    fixedSpeedWait = 0.001;
+                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+                    // Run threads.
+                    pc.printf("Starting Motor Thread\r\n");
+                    fixedSpeedThread->start(&fixedSpeed);
+                    pc.printf("Starting PID Thread.\r\n");
+                    speedPIDThread->start(&VPID);
                     break;
                 case 'D':
                     speedTd = charsToFloat(command, 1, index - 1);
+                    speedController.setTunings(speedKc, speedTi, speedTd);
+                    speedController.setSetPoint(desiredSpeedValue);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
+                    I3.enable_irq();
+                    // Begin!
+                    fixedSpeedWait = 0.001;
+                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+                    // Run threads.
+                    pc.printf("Starting Motor Thread\r\n");
+                    fixedSpeedThread->start(&fixedSpeed);
+                    pc.printf("Starting PID Thread.\r\n");
+                    speedPIDThread->start(&VPID);
                     break;
 
                 // Braking function
