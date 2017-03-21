@@ -366,6 +366,11 @@ int main()
     fixedSpeedThread = new Thread(osPriorityNormal, 256);
     playNotesThread = new Thread(osPriorityNormal, 256);
 
+    // Interrrupt
+    I3.mode(PullNone);
+    I3.rise(&rps);
+    I3.disable_irq();
+
     while(1) {
 
         //If there's a character to read from the serial port
@@ -427,15 +432,15 @@ int main()
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
-                    I3.rise(&rps);
+                    I3.enable_irq();
                     // Begin!
                     fixedSpeedWait = 1000/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
                     // Run threads.
-                    pc.printf("Starting PID Thread.");
-                    speedPIDThread->start(&VPID);
                     pc.printf("Starting Motor Thread");
                     fixedSpeedThread->start(&fixedSpeed);
+                    pc.printf("Starting PID Thread.");
+                    speedPIDThread->start(&VPID);
                     break;
 
                 // Is R first.
@@ -468,19 +473,19 @@ int main()
                     playNotesThread->start(&playNotes);
                     break;
 
-                // Braking function
-                case 'B':
-                    brakeRevCount = 0;
-                    I3.mode(PullNone);
-                    I3.rise(&brakeCount);
-                    motorHigh = CWHigh[1];
-                    L1L = CWL1L[1];
-                    L2L = CWL2L[1];
-                    L3L = CWL3L[1];
-                    break;
-                case 'C':
-                    pc.printf("Brake Count: %d\n\r", brakeRevCount);
-                    break;
+                // // Braking function
+                // case 'B':
+                //     brakeRevCount = 0;
+                //     I3.mode(PullNone);
+                //     I3.rise(&brakeCount);
+                //     motorHigh = CWHigh[1];
+                //     L1L = CWL1L[1];
+                //     L2L = CWL2L[1];
+                //     L3L = CWL3L[1];
+                //     break;
+                // case 'C':
+                //     pc.printf("Brake Count: %d\n\r", brakeRevCount);
+                //     break;
                 // If something weird comes along.
                 default:
                     // Commands to kill all threads
