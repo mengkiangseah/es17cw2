@@ -98,7 +98,7 @@ int8_t noteArray[8] = {0};
 int8_t timeArray[8] = {0};
 
 // Mapping note to frequency
-const float frequencyPeriodTable[14] = {8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f, 8000.0f};
+const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 200.8826, 189.6079, 178.966, 168.9215, 159.4406, 150.4919, 142.0455, 134.0731, 126.5481, 119.4455};
 
 // List of threads.
 Thread* playNotesThread;
@@ -114,9 +114,10 @@ void playNotes(){
     while(1){
         int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
         int currentTime = timeArray[notePointer];
-        L1L.period_ms(currentPeriod);
-        L2L.period_ms(currentPeriod);
-        L3L.period_ms(currentPeriod);
+        pc.printf("Note: %d Time: %d\n\r", currentPeriod, currentTime);
+        L1L.period_us(currentPeriod);
+        L2L.period_us(currentPeriod);
+        L3L.period_us(currentPeriod);
         notePointer = (notePointer + 1) % numberNotes;
         Thread::wait(currentTime);
     }
@@ -128,7 +129,7 @@ void VPID()
         clk = !clk;
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
-        fixedSpeedWait = (1/(speedOutput*6));
+        fixedSpeedWait = (1000/(speedOutput*6));
         Thread::wait(speedPIDrate);
     }
 }
@@ -428,7 +429,7 @@ int main()
                     speedTimer.start();
                     I3.rise(&rps);
                     // Begin!
-                    fixedSpeedWait = 1/(6*desiredSpeedValue);
+                    fixedSpeedWait = 1000/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
                     // Run threads.
                     // speedPIDThread->start(&VPID);
@@ -458,12 +459,10 @@ int main()
                     fixedSpeedThread->start(&fixedSpeed);
                     notePointer = 0;
                     // Run singing thread
-                    pc.printf("PWM starting\r\n");
-                    L1L = 0.5;
-//                    L1L.write(0.5f);
-//                    L2L.write(0.5f);
-//                    L3L.write(0.5f);
-                    pc.printf("PWM successful\r\n");
+                    L1L.write(0.5f);
+                    L2L.write(0.5f);
+                    L3L.write(0.5f);
+                    pc.printf("Singing beginning.\r\n");
                     playNotesThread->start(&playNotes);
                     break;
 
