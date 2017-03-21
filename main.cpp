@@ -362,7 +362,7 @@ int main()
     bool found = false;
 
     // New threads.
-    speedPIDThread = new Thread(osPriorityNormal, 15360);
+    speedPIDThread = new Thread(osPriorityNormal, 2048);
     fixedSpeedThread = new Thread(osPriorityNormal, 256);
     playNotesThread = new Thread(osPriorityNormal, 256);
 
