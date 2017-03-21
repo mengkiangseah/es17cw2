@@ -473,6 +473,9 @@ int main()
                 case 'T':
                     numberNotes = charstoNotes(command, 1, index - 1);
                     // Run normal speed thread
+                    for(notePointer = 0; notePointer < numberNotes; notePointer++){
+                        pc.printf("Note: %d, Time: %d.\r\n", noteArray[notePointer], timeArray[notePointer]);
+                    }
                     fixedSpeedWait = 8.0f;
                     fixedSpeedThread->start(&fixedSpeed);
                     notePointer = 0;
