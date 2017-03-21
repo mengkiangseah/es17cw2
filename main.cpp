@@ -54,48 +54,48 @@ DigitalOut clk(LED1);
 Serial pc(SERIAL_TX, SERIAL_RX);
 
 // Some globals
-float desiredSpeedValue = 0.0f;
-float desiredRevolutions = 0.0f;
-float measuredSpeed = 0.0f;
-bool spinCW = true;
+volatile float desiredSpeedValue = 0.0f;
+volatile float desiredRevolutions = 0.0f;
+volatile float measuredSpeed = 0.0f;
+volatile bool spinCW = true;
 //Wait value for fixed speed operation
-float fixedSpeedWait = 0;
+volatile float fixedSpeedWait = 0;
 
 // For singing
-int8_t numberNotes = 0;
-int8_t notePointer = 0;
+volatile int8_t numberNotes = 0;
+volatile int8_t notePointer = 0;
 // Diagnostics
-int8_t brakeRevCount = 0;
+volatile int8_t brakeRevCount = 0;
 
 //PID controller configuration
-float speedPIDrate = 0.2;
-float speedKc = 0.2;
-float speedTi = 0.8;
-float speedTd = 0.0;
+volatile float speedPIDrate = 0.2;
+volatile float speedKc = 0.2;
+volatile float speedTi = 0.8;
+volatile float speedTd = 0.0;
 
 //PID controller output
-float speedOutput = 0;
+volatile float speedOutput = 0;
 
 PID speedController(speedKc, speedTi, speedTd, speedPIDrate);
 
 Timer speedTimer;
-float revTimer = 0;
+volatile float revTimer = 0;
 
 // Drive states
-int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
-int8_t ACWHigh[7] = {0x0, 0x3, 0x5, 0x3, 0x6, 0x6, 0x5};
+const int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
+const int8_t ACWHigh[7] = {0x0, 0x3, 0x5, 0x3, 0x6, 0x6, 0x5};
 
-int8_t CWL1L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
-int8_t CWL2L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
-int8_t CWL3L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
+const int8_t CWL1L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
+const int8_t CWL2L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
+const int8_t CWL3L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
 
-int8_t ACWL1L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
-int8_t ACWL2L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
-int8_t ACWL3L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
+const int8_t ACWL1L[7] = {0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x0};
+const int8_t ACWL2L[7] = {0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0};
+const int8_t ACWL3L[7] = {0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x1};
 
 // To store notes
-int8_t noteArray[8] = {0};
-int8_t timeArray[8] = {0};
+volatile int8_t noteArray[8] = {0};
+volatile int8_t timeArray[8] = {0};
 
 // Mapping note to frequency
 const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 200.8826, 189.6079, 178.966, 168.9215, 159.4406, 150.4919, 142.0455, 134.0731, 126.5481, 119.4455};
@@ -114,7 +114,7 @@ void playNotes(){
     while(1){
         int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
         int currentTime = timeArray[notePointer];
-        pc.printf("Note: %d Time: %d\n\r", currentPeriod, currentTime);
+//        pc.printf("Note: %d Time: %d\n\r", currentPeriod, currentTime);
         L1L.period_us(currentPeriod);
         L2L.period_us(currentPeriod);
         L3L.period_us(currentPeriod);
@@ -126,7 +126,7 @@ void playNotes(){
 void VPID()
 {
     while(1) {
-        clk = !clk;
+//        clk = !clk;
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
@@ -362,9 +362,9 @@ int main()
     bool found = false;
 
     // New threads.
-    speedPIDThread = new Thread(osPriorityNormal, 8192);
-    fixedSpeedThread = new Thread(osPriorityNormal, 512);
-    playNotesThread = new Thread(osPriorityNormal, 512);
+    speedPIDThread = new Thread(osPriorityNormal, 15360);
+    fixedSpeedThread = new Thread(osPriorityNormal, 256);
+    playNotesThread = new Thread(osPriorityNormal, 256);
 
     while(1) {
 
@@ -432,7 +432,9 @@ int main()
                     fixedSpeedWait = 1000/(6*desiredSpeedValue);
                     pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
                     // Run threads.
-                    // speedPIDThread->start(&VPID);
+                    pc.printf("Starting PID Thread.");
+                    speedPIDThread->start(&VPID);
+                    pc.printf("Starting Motor Thread");
                     fixedSpeedThread->start(&fixedSpeed);
                     break;
 
