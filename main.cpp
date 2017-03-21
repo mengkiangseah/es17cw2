@@ -247,7 +247,7 @@ int8_t charstoNotes(char* commandBuffer, int8_t start, int8_t end)
         // Otherwise, command is 2 characters long.
         else {
             // 2nd char is time.
-            timeArray[note_ptr] = (commandBuffer[current_ptr+2] - '0')*1000;
+            timeArray[note_ptr] = (commandBuffer[current_ptr+1] - '0')*1000;
             // 1st char is note.
             switch (commandBuffer[current_ptr]) {
                 case 'C':
