@@ -3,6 +3,5 @@
 
 Analysis of inter-task dependencies - no possibility of deadlock.
 
-To avoid any possibility of deadlock, it is necessary to ensure that the processor never interrupts a thread during memory access. For this reason, Semaphores and Mutex functions were used in the 
-
+In order to avoid any deadlock situations, the code was designed so that the interdependency of tasks is minimised. The main functionalities (speed PID control, spinning at constant speed and singing) are all implemented in separate threads. Each thread works with its own variables and they do not pass data to each other. The only variables used in more than one thread are output variables (motor field transistors), however, these are written to and never read, hence do not present a threat of memory deadlock.
 \end{document}
