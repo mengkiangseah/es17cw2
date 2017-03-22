@@ -74,13 +74,17 @@ volatile float speedKc = 0.2;
 volatile float speedTi = 1.0;
 volatile float speedTd = 0.01;
 
+// For revolutions
+volatile int16_t wholeRevolutions = 0;
+volatile float partThereof = 0.0f
+
 //PID controller output
 volatile float speedOutput = 0;
 
 PID speedController(speedKc, speedTi, speedTd, speedPIDrate);
 
 Timer speedTimer;
-volatile float revTimer = 0;
+volatile int revTimer = 0;
 
 // Drive states
 const int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
@@ -106,6 +110,7 @@ Thread* playNotesThread;
 Thread* speedPIDThread;
 Thread* fixedSpeedThread;
 
+
 // For counting revolutions during braking.
 void brakeCount(){
     brakeRevCount++;
@@ -129,6 +134,9 @@ void VPID()
 {
     while(1) {
         clk = !clk;
+        if(revTimer != 0)
+            // measuredSpeed = 0.5*measuredSpeed + revTimer;
+            measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
@@ -147,8 +155,8 @@ void rps()
     speedTimer.reset();
     speedTimer.start();
     //1000ms over the timer to calculate the speed, moving average with previous one.
-    if(revTimer != 0)
-        measuredSpeed = 0.5*measuredSpeed + 500/(revTimer);
+    // if(revTimer != 0)
+    //     measuredSpeed = 0.5*measuredSpeed + 500/(revTimer);
 //        measuredSpeed = 1000/(revTimer);
     // Carry on.
     I3.enable_irq();
@@ -391,11 +399,16 @@ int main()
     I3.disable_irq();
 
     while(1) {
-        // pc.printf("measuredSpeed: %3.3f, fixedSpeedWait: %3.3f, K: %3.3f, I: %3.3f, D: %3.3f\r\n", measuredSpeed, fixedSpeedWait, speedKc, speedTi, speedTd);
         // If there's a character to read from the serial port
         if (pc.readable()) {
 
-            // Turn off.
+            // Brake on.
+            motorHigh = CWHigh[1];
+            L1L = CWL1L[1];
+            L2L = CWL2L[1];
+            L3L = CWL3L[1];
+            wait(1.0);
+            // Off
             motorHigh = 0x7;
             L1L = 0;
             L2L = 0;
@@ -476,6 +489,10 @@ int main()
                         desiredRevolutions = charsToFloat(command, 1, indexV - 1);
                         desiredSpeedValue = charsToFloat(command, indexV + 1, index - 1);
                         // Run thread.
+                        speedController.setSetPoint(desiredSpeedValue);
+                        // Set values
+                        wholeRevolutions = floor(desiredRevolutions) - 1;
+                        partThereof = (float)desiredRevolutions - (float)wholeRevolutions;
                     }
                     // Only R
                     else {
