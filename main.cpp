@@ -402,12 +402,12 @@ int main()
         // If there's a character to read from the serial port
         if (pc.readable()) {
 
-            // Brake on.
-            motorHigh = CWHigh[1];
-            L1L = CWL1L[1];
-            L2L = CWL2L[1];
-            L3L = CWL3L[1];
-            wait(1.0);
+            // // Brake on.
+            // motorHigh = CWHigh[1];
+            // L1L = CWL1L[1];
+            // L2L = CWL2L[1];
+            // L3L = CWL3L[1];
+            // wait(1.0);
             // Off
             motorHigh = 0x7;
             L1L = 0;
@@ -572,10 +572,10 @@ int main()
 
                 // Braking function
                 case 'B':
+                    brakeRevCount = 0;
                     I3.mode(PullNone);
                     I3.rise(&brakeCount);
                     I3.enable_irq();
-                    brakeRevCount = 0;
                     motorHigh = CWHigh[1];
                     L1L = CWL1L[1];
                     L2L = CWL2L[1];
