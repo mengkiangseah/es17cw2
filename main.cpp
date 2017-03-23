@@ -69,7 +69,6 @@ volatile int8_t notePointer = 0;
 volatile int8_t brakeRevCount = 0;
 
 //PID controller configuration
-volatile float speedPIDrate = 0.5;
 volatile float speedKc = 0.2;
 volatile float speedTi = 1.0;
 volatile float speedTd = 0.01;
@@ -81,10 +80,12 @@ volatile float partThereof = 0.0f
 //PID controller output
 volatile float speedOutput = 0;
 
-PID speedController(speedKc, speedTi, speedTd, speedPIDrate);
+PID speedController(speedKc, speedTi, speedTd, 0.2);
 
+// Timing object, variable to store milliseconds, and revCounter
 Timer speedTimer;
 volatile int revTimer = 0;
+volatile int revCounter = 0;
 
 // Drive states
 const int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
@@ -109,6 +110,8 @@ const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 2
 Thread* playNotesThread;
 Thread* speedPIDThread;
 Thread* fixedSpeedThread;
+Thread* revolutionsThread;
+Thread* slowMoveThread;
 
 
 // For counting revolutions during braking.
@@ -134,13 +137,13 @@ void VPID()
 {
     while(1) {
         clk = !clk;
+        //1000ms over the timer to calculate the speed, moving average with previous one.
         if(revTimer != 0)
-            // measuredSpeed = 0.5*measuredSpeed + revTimer;
             measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
-        Thread::wait(500);
+        Thread::wait(200);
     }
 }
 
@@ -154,10 +157,22 @@ void rps()
     revTimer = speedTimer.read_ms();
     speedTimer.reset();
     speedTimer.start();
-    //1000ms over the timer to calculate the speed, moving average with previous one.
-    // if(revTimer != 0)
-    //     measuredSpeed = 0.5*measuredSpeed + 500/(revTimer);
-//        measuredSpeed = 1000/(revTimer);
+    // Carry on.
+    I3.enable_irq();
+}
+
+// Interrupt function, with count.
+void rpsCount()
+{
+    // Disable during this function.
+    I3.disable_irq();
+    // Calculation of speed.
+    speedTimer.stop();
+    revTimer = speedTimer.read_ms();
+    speedTimer.reset();
+    speedTimer.start();
+    // Increase counter.
+    revCounter++;
     // Carry on.
     I3.enable_irq();
 }
@@ -492,11 +507,15 @@ int main()
                         speedController.setSetPoint(desiredSpeedValue);
                         // Set values
                         wholeRevolutions = floor(desiredRevolutions) - 1;
-                        partThereof = (float)desiredRevolutions - (float)wholeRevolutions;
+                        partThereof = desiredRevolutions - (float)wholeRevolutions;
+                        revCount = 0;
                     }
                     // Only R
                     else {
                         desiredRevolutions = charsToFloat(command, 1, index - 1);
+                        wholeRevolutions = floor(desiredRevolutions) - 1;
+                        partThereof = desiredRevolutions - (float)wholeRevolutions;
+                        revCount = 0;
                         // Run thread.
                     }
                     break;
