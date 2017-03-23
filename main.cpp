@@ -72,19 +72,25 @@ volatile int8_t notePointer = 0;
 // Diagnostics
 volatile int8_t brakeRevCount = 0;
 
-//PID controller configuration
-volatile float speedKc = 0.2;
-volatile float speedTi = 1.0;
-volatile float speedTd = 0.01;
+//PID controller configurations
+volatile float speedKc = 1.2;
+volatile float speedTi = 0.6;
+volatile float speedTd = 0.05;
+volatile float controlKc = 0.0;
+volatile float controlTi = 0.0;
+volatile float controlTd = 0.0;
 
 // For revolutions
 volatile int16_t wholeRevolutions = 0;
 volatile float partThereof = 0.0f
+volatile float limitRevolutions = 0.0;
 
 //PID controller output
 volatile float speedOutput = 0;
+volatile float revSpeedWait = 0;
 
 PID speedController(speedKc, speedTi, speedTd, 0.2);
+PID positionController(controlKc, controlTi, controlTd, 0.2);
 
 // Timing object, variable to store milliseconds, and revCounter
 Timer speedTimer;
@@ -113,9 +119,8 @@ const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 2
 // List of threads.
 Thread* playNotesThread;
 Thread* speedPIDThread;
-Thread* fixedSpeedThread;
-Thread* revolutionsThread;
-Thread* slowMoveThread;
+Thread* motorThread;
+Thread* revolutionPIDThread;
 
 // For counting revolutions during braking.
 void brakeCount(){
@@ -143,6 +148,7 @@ void VPID()
         //1000ms over the timer to calculate the speed, moving average with previous one.
         if(revTimer != 0)
             measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
+        speedController.setSetPoint(abs(desiredSpeedValue))
         speedController.setProcessValue(measuredSpeed);
         speedOutput = speedController.compute();
         fixedSpeedWait = (1000/(speedOutput*6));
@@ -150,25 +156,31 @@ void VPID()
     }
 }
 
+// Function in PID thread.
+void PPID()
+{
+    while(1) {
+        clk = !clk;
+        positionController.setSetPoint(desiredRevolutions);
+        speedController.setProcessValue(revCounter);
+        revSpeedWait = speedController.compute();
+        Thread::wait(200);
+    }
+}
+
 // Interrupt function.
 void rps()
 {
-    // Disable during this function.
-    I3.disable_irq();
     // Calculation of speed.
     speedTimer.stop();
     revTimer = speedTimer.read_ms();
     speedTimer.reset();
     speedTimer.start();
-    // Carry on.
-    I3.enable_irq();
 }
 
 // Interrupt function, with count.
 void rpsCount()
 {
-    // Disable during this function.
-    I3.disable_irq();
     // Calculation of speed.
     speedTimer.stop();
     revTimer = speedTimer.read_ms();
@@ -176,8 +188,6 @@ void rpsCount()
     speedTimer.start();
     // Increase counter.
     revCounter++;
-    // Carry on.
-    I3.enable_irq();
 }
 
 // Advances states at specified rate.
@@ -210,6 +220,43 @@ void fixedSpeed()
         }
 
         Thread::wait(fixedSpeedWait);
+    }
+}
+
+// Advances states at specified rate.
+void fixedSpeedRevolutions()
+{
+    while(1) {
+        motorHigh = 0x7;
+        L1L = 0;
+        L2L = 0;
+        L3L = 0;
+
+        if(spinCW){
+            motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
+            L1L = CWL1L[(I1 + I2*2 + I3*4)];
+            L2L = CWL2L[(I1 + I2*2 + I3*4)];
+            L3L = CWL3L[(I1 + I2*2 + I3*4)];
+        }
+
+        else{
+            motorHigh = ACWHigh[(I1 + I2*2 + I3*4)];
+            L1L = ACWL1L[(I1 + I2*2 + I3*4)];
+            L2L = ACWL2L[(I1 + I2*2 + I3*4)];
+            L3L = ACWL3L[(I1 + I2*2 + I3*4)];
+        }
+
+        if(isSinging){
+            L1L = L1L/2.0;
+            L2L = L2L/2.0;
+            L3L = L3L/2.0;
+        }
+        if(revCounter < limitRevolutions)
+            Thread::wait(fixedSpeedWait);
+        else if(revCounter < desiredRevolutions)
+            Thread::wait(revSpeedWait);
+        else
+            Thread::wait(1000);
     }
 }
 
@@ -382,9 +429,9 @@ void resetThreads()
         speedPIDThread->join();
     }
 
-    if(fixedSpeedThread->get_state()!=0 && fixedSpeedThread->get_state()!=10) {
-        fixedSpeedThread->terminate();
-        fixedSpeedThread->join();
+    if( ->get_state()!=0 && motorThread->get_state()!=10) {
+        motorThread->terminate();
+        motorThread->join();
     }
 
 }
@@ -408,8 +455,9 @@ int main()
 
     // New threads.
     speedPIDThread = new Thread(osPriorityNormal, 2048);
-    fixedSpeedThread = new Thread(osPriorityNormal, 512);
+    motorThread = new Thread(osPriorityNormal, 512);
     playNotesThread = new Thread(osPriorityNormal, 512);
+    revolutionPIDThread = new Thread(osPriorityNormal, 2048);
 
     // Interrrupt
     I3.mode(PullNone);
@@ -481,7 +529,6 @@ int main()
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
                     if (desiredSpeedValue < 0)
                         spinCW = false;
-                    speedController.setSetPoint(abs(desiredSpeedValue));
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
@@ -490,7 +537,7 @@ int main()
                     fixedSpeedWait = 8.0f;
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
-                    fixedSpeedThread->start(&fixedSpeed);
+                    motorThread->start(&fixedSpeed);
                     pc.printf("Starting PID Thread.\r\n");
                     speedPIDThread->start(&VPID);
                     break;
@@ -503,22 +550,29 @@ int main()
                     if (indexV < index) {
                         desiredRevolutions = charsToFloat(command, 1, indexV - 1);
                         desiredSpeedValue = charsToFloat(command, indexV + 1, index - 1);
-                        // Run thread.
-                        speedController.setSetPoint(desiredSpeedValue);
                         // Set values
-                        wholeRevolutions = floor(desiredRevolutions) - 1;
-                        partThereof = desiredRevolutions - (float)wholeRevolutions;
-                        limit = floor(wholeRevolutions - MAXIMUMBRAKE * (desiredSpeedValue/MAXIMUMSPEED));
+                        limitRevolutions = floor(wholeRevolutions - MAXIMUMBRAKE * (desiredSpeedValue/MAXIMUMSPEED));
                         revCount = 0;
+                        I3.enable_irq();
+                        pc.printf("Starting Motor Thread\r\n");
+                        motorThread->start(&fixedSpeedRevolutions);
+                        pc.printf("Starting VPID Thread.\r\n");
+                        speedPIDThread->start(&VPID);
+                        pc.printf("Starting PPID Thread.\r\n");
+                        revolutionPIDThread->start(&PPID);
                     }
                     // Only R
                     else {
-                        desiredRevolutions = charsToFloat(command, 1, index - 1);
-                        wholeRevolutions = floor(desiredRevolutions) - 1;
-                        partThereof = desiredRevolutions - (float)wholeRevolutions;
+                        desiredRevolutions = charsToFloat(command, 1, indexV - 1);
+                        // Set values
+                        limitRevolutions = floor(wholeRevolutions - MAXIMUMBRAKE * (desiredSpeedValue/MAXIMUMSPEED));
                         revCount = 0;
-                        // Run thread.
-                        fixedSpeedWait = 4;
+                        I3.enable_irq();
+                        fixedSpeedWait = 8.0f;
+                        pc.printf("Starting Motor Thread\r\n");
+                        motorThread->start(&fixedSpeedRevolutions);
+                        pc.printf("Starting PPID Thread.\r\n");
+                        revolutionPIDThread->start(&PPID);
                     }
                     break;
 
@@ -530,7 +584,7 @@ int main()
                         pc.printf("Note: %d, Time: %d.\r\n", noteArray[notePointer], timeArray[notePointer]);
                     }
                     fixedSpeedWait = 8.0f;
-                    fixedSpeedThread->start(&fixedSpeed);
+                    motorThread->start(&fixedSpeed);
                     notePointer = 0;
                     // Run singing thread
                     pc.printf("Singing beginning.\r\n");
@@ -542,50 +596,45 @@ int main()
                 case 'K':
                     speedKc = charsToFloat(command, 1, index - 1);
                     speedController.setTunings(speedKc, speedTi, speedTd);
-                    speedController.setSetPoint(desiredSpeedValue);
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
                     I3.enable_irq();
                     // Begin!
-                    fixedSpeedWait = 0.001;
-                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+                    fixedSpeedWait = 8.0f;
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
-                    fixedSpeedThread->start(&fixedSpeed);
+                    motorThread->start(&fixedSpeed);
                     pc.printf("Starting PID Thread.\r\n");
                     speedPIDThread->start(&VPID);
                     break;
                 case 'I':
                     speedTi = charsToFloat(command, 1, index - 1);
                     speedController.setTunings(speedKc, speedTi, speedTd);
-                    speedController.setSetPoint(desiredSpeedValue);
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
                     I3.enable_irq();
                     // Begin!
-                    fixedSpeedWait = 0.001;
+                    fixedSpeedWait = 8.0f;
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
-                    fixedSpeedThread->start(&fixedSpeed);
+                    motorThread->start(&fixedSpeed);
                     pc.printf("Starting PID Thread.\r\n");
                     speedPIDThread->start(&VPID);
                     break;
                 case 'D':
                     speedTd = charsToFloat(command, 1, index - 1);
                     speedController.setTunings(speedKc, speedTi, speedTd);
-                    speedController.setSetPoint(desiredSpeedValue);
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
                     I3.enable_irq();
                     // Begin!
-                    fixedSpeedWait = 0.001;
-                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+                    fixedSpeedWait = 8.0f;
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
-                    fixedSpeedThread->start(&fixedSpeed);
+                    motorThread->start(&fixedSpeed);
                     pc.printf("Starting PID Thread.\r\n");
                     speedPIDThread->start(&VPID);
                     break;
