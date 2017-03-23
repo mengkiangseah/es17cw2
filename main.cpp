@@ -22,6 +22,10 @@
 //Define sized for command arrays
 #define ARRAYSIZE 49
 
+// Maximum usable speed
+#define MAXIMUMSPEED 100.0
+#define MAXIMUMBRAKE 50
+
 //Mapping from sequential drive states to motor phase outputs
 /*
 State   L1  L2  L3
@@ -53,7 +57,7 @@ DigitalOut clk(LED1);
 // For connection
 Serial pc(SERIAL_TX, SERIAL_RX);
 
-// Some globals
+// Some globals for the inputs and outputs.
 volatile float desiredSpeedValue = 0.0f;
 volatile float desiredRevolutions = 0.0f;
 volatile float measuredSpeed = 0.0f;
@@ -112,7 +116,6 @@ Thread* speedPIDThread;
 Thread* fixedSpeedThread;
 Thread* revolutionsThread;
 Thread* slowMoveThread;
-
 
 // For counting revolutions during braking.
 void brakeCount(){
@@ -416,13 +419,6 @@ int main()
     while(1) {
         // If there's a character to read from the serial port
         if (pc.readable()) {
-
-            // // Brake on.
-            // motorHigh = CWHigh[1];
-            // L1L = CWL1L[1];
-            // L2L = CWL2L[1];
-            // L3L = CWL3L[1];
-            // wait(1.0);
             // Off
             motorHigh = 0x7;
             L1L = 0;
@@ -432,7 +428,8 @@ int main()
             // Remove interrupts
             I3.disable_irq();
 
-            // Ensure singing off.
+            // Ensure singing off, clockwise.
+            spinCW = true;
             isSinging = false;
 
             // Remove threads
@@ -482,14 +479,15 @@ int main()
                 case 'V':
                     // index is EOL, index - 1 is last char
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
-                    speedController.setSetPoint(desiredSpeedValue);
+                    if (desiredSpeedValue < 0)
+                        spinCW = false;
+                    speedController.setSetPoint(abs(desiredSpeedValue));
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
                     I3.enable_irq();
                     // Begin!
-                    fixedSpeedWait = 0.001;
-                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
+                    fixedSpeedWait = 8.0f;
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
                     fixedSpeedThread->start(&fixedSpeed);
@@ -499,6 +497,8 @@ int main()
 
                 // Is R first.
                 case 'R':
+                    I3.rise(&rpsCount);
+                    I3.disable_irq();
                     // V also exists, because indexV before index (EOL)
                     if (indexV < index) {
                         desiredRevolutions = charsToFloat(command, 1, indexV - 1);
@@ -508,6 +508,7 @@ int main()
                         // Set values
                         wholeRevolutions = floor(desiredRevolutions) - 1;
                         partThereof = desiredRevolutions - (float)wholeRevolutions;
+                        limit = floor(wholeRevolutions - MAXIMUMBRAKE * (desiredSpeedValue/MAXIMUMSPEED));
                         revCount = 0;
                     }
                     // Only R
@@ -517,6 +518,7 @@ int main()
                         partThereof = desiredRevolutions - (float)wholeRevolutions;
                         revCount = 0;
                         // Run thread.
+                        fixedSpeedWait = 4;
                     }
                     break;
 
@@ -564,7 +566,6 @@ int main()
                     I3.enable_irq();
                     // Begin!
                     fixedSpeedWait = 0.001;
-                    pc.printf("Wait: %2.3f\r\n", fixedSpeedWait);
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
                     fixedSpeedThread->start(&fixedSpeed);
