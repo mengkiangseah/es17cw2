@@ -82,9 +82,9 @@ volatile int8_t notePointer = 0;
 volatile float speedKc = 1.2;
 volatile float speedTi = 0.6;
 volatile float speedTd = 0.05;
-volatile float controlKc = 1.0;
+volatile float controlKc = 5.0;
 volatile float controlTi = 0.0;
-volatile float controlTd = 1.0;
+volatile float controlTd = 10.0;
 
 // For revolutions
 volatile float limitRevolutions = 0.0;
@@ -218,6 +218,28 @@ void rps()
     revCounter++;
 }
 
+void motorOut(int8_t driveState, float pwm){
+    
+    //Lookup the output byte from the drive state.
+    int8_t driveOut = driveTable[driveState & 0x07];
+      
+    //Turn off first
+    if (~driveOut & 0x01) L1L = 0;
+    if (~driveOut & 0x02) L1H = 1;
+    if (~driveOut & 0x04) L2L = 0;
+    if (~driveOut & 0x08) L2H = 1;
+    if (~driveOut & 0x10) L3L = 0;
+    if (~driveOut & 0x20) L3H = 1;
+    
+    //Then turn on
+    if (driveOut & 0x01) L1L.write(pwm);
+    if (driveOut & 0x02) L1H.write(0);
+    if (driveOut & 0x04) L2L.write(pwm);
+    if (driveOut & 0x08) L2H.write(0);
+    if (driveOut & 0x10) L3L.write(pwm);
+    if (driveOut & 0x20) L3H.write(0);
+    }
+
 // Advances states at specified rate.
 void fixedSpeedRevolutions()
 {
@@ -225,7 +247,7 @@ void fixedSpeedRevolutions()
     int8_t rotStateOld = 0;
     while(1) {
         // read current state of rotor
-        rotState = I1 + I2*2 + I3*4;
+        rotState = stateMap[I1 + I2*2 + I3*4];
         // if state has changed, set the state to the next state
         if(rotState != rotStateOld){
             rotStateOld = rotState;
@@ -233,10 +255,9 @@ void fixedSpeedRevolutions()
             lead = -2;
 
             if(spinCW)
-                lead = 1;
+                lead = 2;
 
             nextState = ((rotState-orgState+lead+6)%6);
-            int8_t driveOut = driveTable[nextState & 0x07];
 
             currPwm = 1;
             if (isPosCtrl)
@@ -250,22 +271,7 @@ void fixedSpeedRevolutions()
                 }
             }
 
-            // turn off first
-            if (~driveOut & 0x01) L1L = 0;
-            if (~driveOut & 0x02) L1H = 1;
-            if (~driveOut & 0x04) L2L = 0;
-            if (~driveOut & 0x08) L2H = 1;
-            if (~driveOut & 0x10) L3L = 0;
-            if (~driveOut & 0x20) L3H = 1;
-            
-            //Then turn on
-            if (driveOut & 0x01) L1L.write(currPwm);
-            if (driveOut & 0x02) L1H.write(0);
-            if (driveOut & 0x04) L2L.write(currPwm);
-            if (driveOut & 0x08) L2H.write(0);
-            if (driveOut & 0x10) L3L.write(currPwm);
-            if (driveOut & 0x20) L3H.write(0);
-
+            motorOut(nextState, currPwm);
             
             if(isSinging){
                 L1L = L1L/2.0;
@@ -470,7 +476,9 @@ int main()
     L2L = 0;
     L3L = 0;
 
-    orgState = (I1 + I2*2 + I3*4);
+    motorOut(0,1.0);
+    wait(1.0);
+    orgState = stateMap[I1 + I2*2 + I3*4];
 
     pc.printf("Rotor origin: %x\n\r",orgState);
 
