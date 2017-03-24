@@ -92,6 +92,7 @@ volatile float limitRevolutions = 0.0;
 //PID controller outputs
 volatile float speedPwm = 1;
 volatile float positionPwm = 1;
+volatile float currPwm = 1;
 
 PID speedController(speedKc, speedTi, speedTd, 0.02);
 PID positionController(controlKc, controlTi, controlTd, 0.02);
@@ -132,12 +133,24 @@ const float CWL3L[7] = {0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0};
 // const float ACWL2L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0};
 // const float ACWL3L[7] = {0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
 
+//Drive state to output table
+const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
+
+//Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
+const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};  
+
+
 // To store notes
 volatile int8_t noteArray[8] = {0};
 volatile int16_t timeArray[8] = {0};
 
 // Mapping note to frequency
 const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 200.8826, 189.6079, 178.966, 168.9215, 159.4406, 150.4919, 142.0455, 134.0731, 126.5481, 119.4455};
+
+// new vars for eds driving
+volatile int lead = 2;
+volatile int8_t orgState;
+volatile int8_t nextState;
 
 // List of threads.
 // Thread* playNotesThread;
@@ -174,16 +187,8 @@ void VPID()
         speedController.setSetPoint(desiredSpeedValue);
         speedController.setProcessValue(measuredSpeed);
         speedPwm = speedController.compute();
-        /*
-        L1L = speedPwm;
-        L2L = speedPwm;
-        L3L = speedPwm;
-        L1H = speedPwm;
-        L2H = speedPwm;
-        L3H = speedPwm;
-        */
-
-        Thread::wait(50);
+        pc.printf("%1.3f", speedPwm);
+        Thread::wait(20);
     }
 }
 
@@ -195,16 +200,9 @@ void PPID()
         positionController.setSetPoint(desiredRevolutions);
         positionController.setProcessValue(revCounter);
         positionPwm = speedController.compute();
-        /*
-        L1L = positionPwm;
-        L2L = positionPwm;
-        L3L = positionPwm;
-        L1H = positionPwm;
-        L2H = positionPwm;
-        L3H = positionPwm;
-        */
+        pc.printf("%1.3f", positionPwm);
 
-        Thread::wait(50);
+        Thread::wait(20);
     }
 }
 
@@ -231,70 +229,52 @@ void fixedSpeedRevolutions()
         // if state has changed, set the state to the next state
         if(rotState != rotStateOld){
             rotStateOld = rotState;
-            // turn off first
-            L1H = 1;
-            L2H = 1;
-            L3H = 1; 
 
-            L1L = 0;
-            L2L = 0;
-            L3L = 0;
+            lead = -2;
 
-            if(spinCW){
-                // spin clockwise
-                L1H = CWL1H[(I1 + I2*2 + I3*4)];
-                L2H = CWL2H[(I1 + I2*2 + I3*4)];
-                L3H = CWL3H[(I1 + I2*2 + I3*4)];
+            if(spinCW)
+                lead = 1;
 
-                L1L = CWL1L[(I1 + I2*2 + I3*4)];
-                L2L = CWL2L[(I1 + I2*2 + I3*4)];
-                L3L = CWL3L[(I1 + I2*2 + I3*4)];
-            }
+            nextState = ((rotState-orgState+lead+6)%6);
+            int8_t driveOut = driveTable[nextState & 0x07];
 
-            else{
-                // spin anticlockwise
-                L1H = ACWL1H[(I1 + I2*2 + I3*4)];
-                L2H = ACWL2H[(I1 + I2*2 + I3*4)];
-                L3H = ACWL3H[(I1 + I2*2 + I3*4)];
-
-                L1L = ACWL1L[(I1 + I2*2 + I3*4)];
-                L2L = ACWL2L[(I1 + I2*2 + I3*4)];
-                L3L = ACWL3L[(I1 + I2*2 + I3*4)];
-            }
-
-            if(isSinging){
-                L1L = L1L/2.0;
-                L2L = L2L/2.0;
-                L3L = L3L/2.0;
-            }
-            else if(isPosCtrl){
-                L1L = L1L * positionPwm;
-                L2L = L2L * positionPwm;
-                L3L = L3L * positionPwm;
-                L1H = L1H * positionPwm;
-                L2H = L2H * positionPwm;
-                L3H = L3H * positionPwm;
-            }
+            currPwm = 1;
+            if (isPosCtrl)
+                currPwm = positionPwm;
             else if (isSpdCtrl){
-                L1L = L1L * speedPwm;
-                L2L = L2L * speedPwm;
-                L3L = L3L * speedPwm;
-                L1H = L1H * speedPwm;
-                L2H = L2H * speedPwm;
-                L3H = L3H * speedPwm;
-                // if limit reached, switch from speed to position control
+                currPwm =speedPwm;
+
                 if (revCounter > limitRevolutions){
                     isSpdCtrl = false;
                     isPosCtrl = true;
                 }
             }
 
-            Thread::wait(50);
+            // turn off first
+            if (~driveOut & 0x01) L1L = 0;
+            if (~driveOut & 0x02) L1H = 1;
+            if (~driveOut & 0x04) L2L = 0;
+            if (~driveOut & 0x08) L2H = 1;
+            if (~driveOut & 0x10) L3L = 0;
+            if (~driveOut & 0x20) L3H = 1;
+            
+            //Then turn on
+            if (driveOut & 0x01) L1L.write(currPwm);
+            if (driveOut & 0x02) L1H.write(0);
+            if (driveOut & 0x04) L2L.write(currPwm);
+            if (driveOut & 0x08) L2H.write(0);
+            if (driveOut & 0x10) L3L.write(currPwm);
+            if (driveOut & 0x20) L3H.write(0);
 
+            
+            if(isSinging){
+                L1L = L1L/2.0;
+                L2L = L2L/2.0;
+                L3L = L3L/2.0;
+            }
         }
-        else{
-            Thread::wait(100);
-        }
+
+        Thread::wait(20);
     }
 }
 
@@ -490,6 +470,10 @@ int main()
     L2L = 0;
     L3L = 0;
 
+    orgState = (I1 + I2*2 + I3*4);
+
+    pc.printf("Rotor origin: %x\n\r",orgState);
+
     // Input buffer
     char command[ARRAYSIZE] = {0};
     char ch;
@@ -503,6 +487,10 @@ int main()
     motorThread = new Thread(osPriorityNormal, 384);
     // playNotesThread = new Thread(osPriorityNormal, 256);
     revolutionPIDThread = new Thread(osPriorityAboveNormal, 1280);
+
+    // define input limits for PIDs
+    speedController.setInputLimits(0.0, 200.0);
+    positionController.setInputLimits(0.0, 2000.0);
 
     // Interrrupt
     I3.mode(PullNone);
