@@ -24,7 +24,7 @@
 
 // Maximum usable speed
 #define MAXIMUMSPEED 60.0
-#define MAXIMUMBRAKE 30
+#define MAXIMUMBRAKE 70
 
 //Mapping from sequential drive states to motor phase outputs
 /*
@@ -80,9 +80,9 @@ volatile int8_t notePointer = 0;
 volatile float speedKc = 1.5;
 volatile float speedTi = 0.8;
 volatile float speedTd = 2.5;
-volatile float controlKc = 20.0;
+volatile float controlKc = 10.0;
 volatile float controlTi = 0.0;
-volatile float controlTd = 1.0;
+volatile float controlTd = 3.0;
 
 // For revolutions
 volatile float limitRevolutions = 0.0;
@@ -614,6 +614,8 @@ int main()
                             spinCW = false;
                         desiredSpeedValue = abs(desiredSpeedValue);
                         desiredRevolutions = abs(desiredRevolutions);
+                        // supress integral control to damp overshoot
+                        speedController.setTunings(speedKc, 0.005, speedTd);
                         // Set values
                         limitRevolutions = floor(desiredRevolutions - MAXIMUMBRAKE * (desiredSpeedValue/MAXIMUMSPEED));
                         if(desiredRevolutions - limitRevolutions < 40)
