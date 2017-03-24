@@ -44,13 +44,13 @@ DigitalIn I1(I1pin);
 DigitalIn I2(I2pin);
 InterruptIn I3(I3pin);
 
-//NOTE, BusOut declares things in reverse (ie, 0, 1, 2, 3) compared to binary represenation
-// BusOut motorLow(L1Lpin, L2Lpin, L3Lpin);
-BusOut motorHigh(L1Hpin, L2Hpin, L3Hpin);
-// PWM out for singing.
+// PWM outs for transistors
 PwmOut L1L(L1Lpin);
 PwmOut L2L(L2Lpin);
 PwmOut L3L(L3Lpin);
+PwmOut L1H(L1Hpin);
+PwmOut L2H(L2Hpin);
+PwmOut L3H(L3Hpin);
 // Diagnostics
 DigitalOut clk(LED1);
 
@@ -63,8 +63,10 @@ volatile float desiredRevolutions = 0.0f;
 volatile bool spinCW = true;
 // Speed Calculation
 volatile float measuredSpeed = 0.0f;
-// If singing
+// operation mode flags
 volatile bool isSinging = false;
+volatile bool isSpdCtrl = false;
+volatile bool isPosCtrl = false;
 //Wait value for fixed speed operation
 volatile float fixedSpeedWait = 0;
 // If revolutions are not counted
@@ -80,19 +82,19 @@ volatile int8_t notePointer = 0;
 volatile float speedKc = 1.2;
 volatile float speedTi = 0.6;
 volatile float speedTd = 0.05;
-volatile float controlKc = 0.0;
+volatile float controlKc = 1.0;
 volatile float controlTi = 0.0;
-volatile float controlTd = 0.0;
+volatile float controlTd = 1.0;
 
 // For revolutions
 volatile float limitRevolutions = 0.0;
 
-//PID controller output
-volatile float speedOutput = 0;
-volatile float revSpeedWait = 0;
+//PID controller outputs
+volatile float speedPwm = 1;
+volatile float positionPwm = 1;
 
-PID speedController(speedKc, speedTi, speedTd, 0.2);
-PID positionController(controlKc, controlTi, controlTd, 0.2);
+PID speedController(speedKc, speedTi, speedTd, 0.02);
+PID positionController(controlKc, controlTi, controlTd, 0.02);
 
 // Timing object, variable to store milliseconds, and revCounter
 Timer speedTimer;
@@ -102,6 +104,9 @@ volatile int revCounter = 0;
 // // Drive states
 // const int8_t CWHigh[7] = {0x0, 0x6, 0x3, 0x6, 0x5, 0x5, 0x3};
 const int8_t ACWHigh[7] = {0x0, 0x3, 0x5, 0x3, 0x6, 0x6, 0x5};
+const float ACWL1H[7] = {0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0};
+const float ACWL2H[7] = {0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0};
+const float ACWL3H[7] = {0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0};
 //
 // const float CWL1L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0};
 // const float CWL2L[7] = {0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0};
@@ -113,6 +118,10 @@ const float ACWL3L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0};
 
 // Drive states
 const int8_t CWHigh[7] = {0x0, 0x5, 0x6, 0x6, 0x3, 0x5, 0x3};
+const float CWL1H[7] = {0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0};
+const float CWL2H[7] = {0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0};
+const float CWL3H[7] = {0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0};
+
 // const int8_t ACWHigh[7] = {0x0, 0x3, 0x5, 0x5, 0x6, 0x3, 0x6};
 
 const float CWL1L[7] = {0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0};
@@ -164,9 +173,17 @@ void VPID()
             measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
         speedController.setSetPoint(desiredSpeedValue);
         speedController.setProcessValue(measuredSpeed);
-        speedOutput = speedController.compute();
-        fixedSpeedWait = (1000/(speedOutput*6));
-        Thread::wait(200);
+        speedPwm = speedController.compute();
+        /*
+        L1L = speedPwm;
+        L2L = speedPwm;
+        L3L = speedPwm;
+        L1H = speedPwm;
+        L2H = speedPwm;
+        L3H = speedPwm;
+        */
+
+        Thread::wait(50);
     }
 }
 
@@ -177,8 +194,17 @@ void PPID()
         clk = !clk;
         positionController.setSetPoint(desiredRevolutions);
         positionController.setProcessValue(revCounter);
-        revSpeedWait = speedController.compute();
-        Thread::wait(200);
+        positionPwm = speedController.compute();
+        /*
+        L1L = positionPwm;
+        L2L = positionPwm;
+        L3L = positionPwm;
+        L1H = positionPwm;
+        L2H = positionPwm;
+        L3H = positionPwm;
+        */
+
+        Thread::wait(50);
     }
 }
 
@@ -197,24 +223,40 @@ void rps()
 // Advances states at specified rate.
 void fixedSpeedRevolutions()
 {
+    int8_t rotState = 0;
+    int8_t rotStateOld = 0;
     while(1) {
-        // noRevs is true for all V and T instructions.
-        // If R, only if before desired.
-        if(noRevs || revCounter < desiredRevolutions){
-            motorHigh = 0x7;
+        // read current state of rotor
+        rotState = I1 + I2*2 + I3*4;
+        // if state has changed, set the state to the next state
+        if(rotState != rotStateOld){
+            rotStateOld = rotState;
+            // turn off first
+            L1H = 1;
+            L2H = 1;
+            L3H = 1; 
+
             L1L = 0;
             L2L = 0;
             L3L = 0;
 
             if(spinCW){
-                motorHigh = CWHigh[(I1 + I2*2 + I3*4)];
+                // spin clockwise
+                L1H = CWL1H[(I1 + I2*2 + I3*4)];
+                L2H = CWL2H[(I1 + I2*2 + I3*4)];
+                L3H = CWL3H[(I1 + I2*2 + I3*4)];
+
                 L1L = CWL1L[(I1 + I2*2 + I3*4)];
                 L2L = CWL2L[(I1 + I2*2 + I3*4)];
                 L3L = CWL3L[(I1 + I2*2 + I3*4)];
             }
 
             else{
-                motorHigh = ACWHigh[(I1 + I2*2 + I3*4)];
+                // spin anticlockwise
+                L1H = ACWL1H[(I1 + I2*2 + I3*4)];
+                L2H = ACWL2H[(I1 + I2*2 + I3*4)];
+                L3H = ACWL3H[(I1 + I2*2 + I3*4)];
+
                 L1L = ACWL1L[(I1 + I2*2 + I3*4)];
                 L2L = ACWL2L[(I1 + I2*2 + I3*4)];
                 L3L = ACWL3L[(I1 + I2*2 + I3*4)];
@@ -225,17 +267,33 @@ void fixedSpeedRevolutions()
                 L2L = L2L/2.0;
                 L3L = L3L/2.0;
             }
-            // Guaranteed to end up here for T and V. Only if before limit.
-            if(noRevs || revCounter < limitRevolutions)
-                Thread::wait(fixedSpeedWait);
-            // Approaching desiredRevolutions.
-            else
-                Thread::wait(revSpeedWait);
+            else if(isPosCtrl){
+                L1L = L1L * positionPwm;
+                L2L = L2L * positionPwm;
+                L3L = L3L * positionPwm;
+                L1H = L1H * positionPwm;
+                L2H = L2H * positionPwm;
+                L3H = L3H * positionPwm;
+            }
+            else if (isSpdCtrl){
+                L1L = L1L * speedPwm;
+                L2L = L2L * speedPwm;
+                L3L = L3L * speedPwm;
+                L1H = L1H * speedPwm;
+                L2H = L2H * speedPwm;
+                L3H = L3H * speedPwm;
+                // if limit reached, switch from speed to position control
+                if (revCounter > limitRevolutions){
+                    isSpdCtrl = false;
+                    isPosCtrl = true;
+                }
+            }
+
+            Thread::wait(50);
 
         }
-        // Attained desiredRevolutions.
         else{
-            Thread::wait(1000);
+            Thread::wait(100);
         }
     }
 }
@@ -425,7 +483,9 @@ void resetThreads()
 int main()
 {
     pc.printf("Startup!\n\r");
-    motorHigh = 0x7;
+    L1H = 1;
+    L2H = 1;
+    L3H = 1;    
     L1L = 0;
     L2L = 0;
     L3L = 0;
@@ -439,10 +499,10 @@ int main()
     bool found = false;
 
     // New threads.
-    speedPIDThread = new Thread(osPriorityNormal, 1280);
+    speedPIDThread = new Thread(osPriorityAboveNormal, 1280);
     motorThread = new Thread(osPriorityNormal, 384);
     // playNotesThread = new Thread(osPriorityNormal, 256);
-    revolutionPIDThread = new Thread(osPriorityNormal, 1280);
+    revolutionPIDThread = new Thread(osPriorityAboveNormal, 1280);
 
     // Interrrupt
     I3.mode(PullNone);
@@ -451,7 +511,9 @@ int main()
         // If there's a character to read from the serial port
         if (pc.readable()) {
             // Off
-            motorHigh = 0x7;
+            L1H = 1;
+            L2H = 1;
+            L3H = 1;
             L1L = 0;
             L2L = 0;
             L3L = 0;
@@ -464,6 +526,8 @@ int main()
             spinCW = true;
             isSinging = false;
             noRevs = true;
+            isSpdCtrl = false;
+            isPosCtrl = false;
 
             // Remove threads
             resetThreads();
@@ -519,8 +583,9 @@ int main()
                     speedTimer.reset();
                     speedTimer.start();
                     I3.enable_irq();
+                    isSpdCtrl = true;
                     // Begin!
-                    fixedSpeedWait = 8.0f;
+                    //fixedSpeedWait = 8.0f;
                     // Run threads.
                     pc.printf("Starting Motor Thread\r\n");
                     motorThread->start(&fixedSpeedRevolutions);
@@ -546,10 +611,16 @@ int main()
                         if (limitRevolutions < 0)
                             limitRevolutions = 0;
                         revCounter = 0;
+                        if (revCounter < limitRevolutions)
+                            isSpdCtrl = true;
+                        else
+                            isPosCtrl = true;
+
                         speedTimer.reset();
                         speedTimer.start();
                         I3.enable_irq();
-                        fixedSpeedWait = 8.0f;
+
+                       // fixedSpeedWait = 8.0f;
                         pc.printf("Starting Motor Thread\r\n");
                         motorThread->start(&fixedSpeedRevolutions);
                         pc.printf("Starting VPID Thread.\r\n");
@@ -571,7 +642,8 @@ int main()
                         speedTimer.reset();
                         speedTimer.start();
                         I3.enable_irq();
-                        fixedSpeedWait = 8.0f;
+                        isPosCtrl = true;
+                       // fixedSpeedWait = 8.0f;
                         pc.printf("Starting Motor Thread\r\n");
                         motorThread->start(&fixedSpeedRevolutions);
                         pc.printf("Starting PPID Thread.\r\n");
