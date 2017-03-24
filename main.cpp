@@ -271,6 +271,8 @@ void fixedSpeedRevolutions()
                 }
             }
 
+            //pc.printf("%1.3f", currPwm);
+
             motorOut(nextState, currPwm);
             
             if(isSinging){
@@ -280,7 +282,7 @@ void fixedSpeedRevolutions()
             }
         }
 
-        Thread::wait(20);
+        Thread::wait(1);
     }
 }
 
@@ -491,10 +493,10 @@ int main()
     bool found = false;
 
     // New threads.
-    speedPIDThread = new Thread(osPriorityAboveNormal, 1280);
+    speedPIDThread = new Thread(osPriorityNormal, 1280);
     motorThread = new Thread(osPriorityNormal, 384);
     // playNotesThread = new Thread(osPriorityNormal, 256);
-    revolutionPIDThread = new Thread(osPriorityAboveNormal, 1280);
+    revolutionPIDThread = new Thread(osPriorityNormal, 1280);
 
     // define input limits for PIDs
     speedController.setInputLimits(0.0, 200.0);
