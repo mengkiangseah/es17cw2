@@ -40,8 +40,8 @@ State   L1  L2  L3
 */
 
 // Photointerrupter inputs
-DigitalIn I1(I1pin);
-DigitalIn I2(I2pin);
+InterruptIn I1(I1pin);
+InterruptIn I2(I2pin);
 InterruptIn I3(I3pin);
 
 // PWM outs for transistors
@@ -79,9 +79,9 @@ volatile int8_t notePointer = 0;
 // volatile int8_t brakeRevCount = 0;
 
 //PID controller configurations
-volatile float speedKc = 1.2;
-volatile float speedTi = 0.6;
-volatile float speedTd = 0.05;
+volatile float speedKc = 1.5;
+volatile float speedTi = 0.8;
+volatile float speedTd = 1.5;
 volatile float controlKc = 5.0;
 volatile float controlTi = 0.0;
 volatile float controlTd = 10.0;
@@ -92,7 +92,7 @@ volatile float limitRevolutions = 0.0;
 //PID controller outputs
 volatile float speedPwm = 1;
 volatile float positionPwm = 1;
-volatile float currPwm = 1;
+volatile float pwm = 1;
 
 PID speedController(speedKc, speedTi, speedTd, 0.02);
 PID positionController(controlKc, controlTi, controlTd, 0.02);
@@ -137,7 +137,7 @@ const float CWL3L[7] = {0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0};
 const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
 
 //Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
-const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};  
+const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
 
 
 // To store notes
@@ -151,6 +151,9 @@ const float frequencyPeriodTable[14] = {253.0963, 238.891, 225.4831, 212.8277, 2
 volatile int lead = 2;
 volatile int8_t orgState;
 volatile int8_t nextState;
+volatile int8_t intState;
+
+//volatile float pwm = 0.5;
 
 // List of threads.
 // Thread* playNotesThread;
@@ -163,9 +166,60 @@ Thread* revolutionPIDThread;
 //     brakeRevCount++;
 // }
 
+
+
+void motorOut(int8_t driveState)
+{
+
+    //Lookup the output byte from the drive state.
+    int8_t driveOut = driveTable[driveState & 0x07];
+
+    //Turn off first
+    if (~driveOut & 0x01) L1L = 0;
+    if (~driveOut & 0x02) L1H = 1;
+    if (~driveOut & 0x04) L2L = 0;
+    if (~driveOut & 0x08) L2H = 1;
+    if (~driveOut & 0x10) L3L = 0;
+    if (~driveOut & 0x20) L3H = 1;
+
+    //Then turn on
+    if (driveOut & 0x01) L1L.write(pwm);
+    if (driveOut & 0x02) L1H.write(0);
+    if (driveOut & 0x04) L2L.write(pwm);
+    if (driveOut & 0x08) L2H.write(0);
+    if (driveOut & 0x10) L3L.write(pwm);
+    if (driveOut & 0x20) L3H.write(0);
+}
+
+void state_interrupt()
+{
+//    clk = !clk;
+    intState=stateMap[I1 + 2*I2 + 4*I3];//I1+2*I2+4*I3;
+    motorOut((intState-orgState+lead+6)%6);
+}
+
+void state_interrupt_speed()
+{
+
+    // Calculation of speed.
+    speedTimer.stop();
+    revTimer = speedTimer.read_ms();
+    speedTimer.reset();
+    speedTimer.start();
+    // Increase counter.
+    revCounter++;
+    if(isPosCtrl){
+        pwm = positionPwm;
+    } else {
+        pwm = speedPwm;
+    }
+    intState=stateMap[I1 + 2*I2 + 4*I3];//I1+2*I2+4*I3;
+    motorOut((intState-orgState+lead+6)%6);
+}
 // Function running in playNotesThread,
-void playNotes(){
-    while(1){
+void playNotes()
+{
+    while(1) {
         int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
         int currentTime = timeArray[notePointer];
         L1L.period_us(currentPeriod);
@@ -180,15 +234,15 @@ void playNotes(){
 void VPID()
 {
     while(1) {
-        clk = !clk;
+//        clk = !clk;
         //1000ms over the timer to calculate the speed, moving average with previous one.
         if(revTimer != 0)
             measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
         speedController.setSetPoint(desiredSpeedValue);
         speedController.setProcessValue(measuredSpeed);
         speedPwm = speedController.compute();
-        pc.printf("%1.3f", speedPwm);
-        Thread::wait(20);
+//        pc.printf("%1.3f", speedPwm);
+        Thread::wait(1);
     }
 }
 
@@ -196,93 +250,13 @@ void VPID()
 void PPID()
 {
     while(1) {
-        clk = !clk;
+//        clk = !clk;
         positionController.setSetPoint(desiredRevolutions);
         positionController.setProcessValue(revCounter);
         positionPwm = speedController.compute();
-        pc.printf("%1.3f", positionPwm);
+//        pc.printf("%1.3f", positionPwm);
 
         Thread::wait(20);
-    }
-}
-
-// Interrupt function.
-void rps()
-{
-    // Calculation of speed.
-    speedTimer.stop();
-    revTimer = speedTimer.read_ms();
-    speedTimer.reset();
-    speedTimer.start();
-    // Increase counter.
-    revCounter++;
-}
-
-void motorOut(int8_t driveState, float pwm){
-    
-    //Lookup the output byte from the drive state.
-    int8_t driveOut = driveTable[driveState & 0x07];
-      
-    //Turn off first
-    if (~driveOut & 0x01) L1L = 0;
-    if (~driveOut & 0x02) L1H = 1;
-    if (~driveOut & 0x04) L2L = 0;
-    if (~driveOut & 0x08) L2H = 1;
-    if (~driveOut & 0x10) L3L = 0;
-    if (~driveOut & 0x20) L3H = 1;
-    
-    //Then turn on
-    if (driveOut & 0x01) L1L.write(pwm);
-    if (driveOut & 0x02) L1H.write(0);
-    if (driveOut & 0x04) L2L.write(pwm);
-    if (driveOut & 0x08) L2H.write(0);
-    if (driveOut & 0x10) L3L.write(pwm);
-    if (driveOut & 0x20) L3H.write(0);
-    }
-
-// Advances states at specified rate.
-void fixedSpeedRevolutions()
-{
-    int8_t rotState = 0;
-    int8_t rotStateOld = 0;
-    while(1) {
-        // read current state of rotor
-        rotState = stateMap[I1 + I2*2 + I3*4];
-        // if state has changed, set the state to the next state
-        if(rotState != rotStateOld){
-            rotStateOld = rotState;
-
-            lead = -2;
-
-            if(spinCW)
-                lead = 2;
-
-            nextState = ((rotState-orgState+lead+6)%6);
-
-            currPwm = 1;
-            if (isPosCtrl)
-                currPwm = positionPwm;
-            else if (isSpdCtrl){
-                currPwm =speedPwm;
-
-                if (revCounter > limitRevolutions){
-                    isSpdCtrl = false;
-                    isPosCtrl = true;
-                }
-            }
-
-            //pc.printf("%1.3f", currPwm);
-
-            motorOut(nextState, currPwm);
-            
-            if(isSinging){
-                L1L = L1L/2.0;
-                L2L = L2L/2.0;
-                L3L = L3L/2.0;
-            }
-        }
-
-        Thread::wait(1);
     }
 }
 
@@ -467,18 +441,65 @@ void resetThreads()
 
 }
 
+// Advances states at specified rate.
+void fixedSpeedRevolutions()
+{
+    int8_t rotState = 0;
+    int8_t rotStateOld = 0;
+    while(1) {
+        // read current state of rotor
+        rotState = stateMap[I1 + I2*2 + I3*4];
+        // if state has changed, set the state to the next state
+        if(rotState != rotStateOld) {
+            rotStateOld = rotState;
+
+            lead = -2;
+
+            if(spinCW)
+                lead = 2;
+
+            nextState = ((rotState-orgState+lead+6)%6);
+
+            pwm = 1;
+            if (isPosCtrl)
+                pwm = positionPwm;
+            else if (isSpdCtrl) {
+                pwm =speedPwm;
+
+                if (revCounter > limitRevolutions) {
+                    isSpdCtrl = false;
+                    isPosCtrl = true;
+                }
+            }
+
+            //pc.printf("%1.3f", currPwm);
+
+            motorOut(nextState);
+
+            if(isSinging) {
+                L1L = L1L/2.0;
+                L2L = L2L/2.0;
+                L3L = L3L/2.0;
+            }
+        }
+
+        Thread::wait(1);
+    }
+}
+
 //Main function
 int main()
 {
+    
     pc.printf("Startup!\n\r");
     L1H = 1;
     L2H = 1;
-    L3H = 1;    
+    L3H = 1;
     L1L = 0;
     L2L = 0;
     L3L = 0;
 
-    motorOut(0,1.0);
+    motorOut(0);
     wait(1.0);
     orgState = stateMap[I1 + I2*2 + I3*4];
 
@@ -500,10 +521,17 @@ int main()
 
     // define input limits for PIDs
     speedController.setInputLimits(0.0, 200.0);
+    speedController.setOutputLimits(0.0, 1.0);
     positionController.setInputLimits(0.0, 2000.0);
 
     // Interrrupt
-    I3.mode(PullNone);
+//    I3.mode(PullNone);
+    I1.rise(&state_interrupt_speed);
+    I1.fall(&state_interrupt);
+    I2.rise(&state_interrupt);
+    I2.fall(&state_interrupt);
+    I3.rise(&state_interrupt);
+    I3.fall(&state_interrupt);
 
     while(1) {
         // If there's a character to read from the serial port
@@ -517,7 +545,11 @@ int main()
             L3L = 0;
 
             // Remove interrupts
-            I3.rise(&rps);
+//            I3.rise(&rps);
+
+
+            I1.disable_irq();
+            I2.disable_irq();
             I3.disable_irq();
 
             // Ensure singing off, clockwise, not counting revs.
@@ -570,28 +602,37 @@ int main()
             //Analyse the input string
             switch (command[0]) {
 
-                // Only V
+                    // Only V
                 case 'V':
                     // index is EOL, index - 1 is last char
                     desiredSpeedValue = charsToFloat(command, 1, index - 1);
-                    if (desiredSpeedValue < 0)
+                    if (desiredSpeedValue < 0) {
                         spinCW = false;
+                        lead = -1;
+                    } else {
+                        spinCW = true;
+                        lead = 1;
+                    }
                     desiredSpeedValue = abs(desiredSpeedValue);
                     // Start interrupts
                     speedTimer.reset();
                     speedTimer.start();
+                    I1.enable_irq();
+                    I2.enable_irq();
                     I3.enable_irq();
+                    intState = I1+2*I2+4*I3;
+                    motorOut((intState-orgState+lead+6)%6);
+//                    motorOut(I1+2*I2+4*I3);/
                     isSpdCtrl = true;
                     // Begin!
                     //fixedSpeedWait = 8.0f;
                     // Run threads.
-                    pc.printf("Starting Motor Thread\r\n");
-                    motorThread->start(&fixedSpeedRevolutions);
+//                    pc.printf("Starting Motor Thread\r\n");
                     pc.printf("Starting VPID Thread.\r\n");
                     speedPIDThread->start(&VPID);
                     break;
 
-                // Is R first.
+                    // Is R first.
                 case 'R':
                     noRevs = false;
                     // V also exists, because indexV before index (EOL)
@@ -616,11 +657,13 @@ int main()
 
                         speedTimer.reset();
                         speedTimer.start();
+                        I1.enable_irq();
+                        I2.enable_irq();
                         I3.enable_irq();
 
-                       // fixedSpeedWait = 8.0f;
-                        pc.printf("Starting Motor Thread\r\n");
-                        motorThread->start(&fixedSpeedRevolutions);
+                        // fixedSpeedWait = 8.0f;
+//                        pc.printf("Starting Motor Thread\r\n");
+//                        motorThread->start(&fixedSpeedRevolutions);
                         pc.printf("Starting VPID Thread.\r\n");
                         speedPIDThread->start(&VPID);
                         pc.printf("Starting PPID Thread.\r\n");
@@ -641,19 +684,19 @@ int main()
                         speedTimer.start();
                         I3.enable_irq();
                         isPosCtrl = true;
-                       // fixedSpeedWait = 8.0f;
+                        // fixedSpeedWait = 8.0f;
                         pc.printf("Starting Motor Thread\r\n");
-                        motorThread->start(&fixedSpeedRevolutions);
+//                        motorThread->start(&fixedSpeedRevolutions);
                         pc.printf("Starting PPID Thread.\r\n");
                         revolutionPIDThread->start(&PPID);
                     }
                     break;
 
-                // Needs to sing
+                    // Needs to sing
                 case 'T':
                     numberNotes = charToNotes(command, 1, index - 1);
                     // Run normal speed thread
-                    for(notePointer = 0; notePointer < numberNotes; notePointer++){
+                    for(notePointer = 0; notePointer < numberNotes; notePointer++) {
                         pc.printf("Note: %d, Time: %d.\r\n", noteArray[notePointer], timeArray[notePointer]);
                     }
                     fixedSpeedWait = 8.0f;
@@ -666,53 +709,53 @@ int main()
                     speedPIDThread->start(&playNotes);
                     break;
 
-                //Calibration speedKc, speedTi, speedTd
-                // case 'K':
-                //     speedKc = charsToFloat(command, 1, index - 1);
-                //     speedController.setTunings(speedKc, speedTi, speedTd);
-                //     // Start interrupts
-                //     speedTimer.reset();
-                //     speedTimer.start();
-                //     I3.enable_irq();
-                //     // Begin!
-                //     fixedSpeedWait = 8.0f;
-                //     // Run threads.
-                //     pc.printf("Starting Motor Thread\r\n");
-                //     motorThread->start(&fixedSpeed);
-                //     pc.printf("Starting VPID Thread.\r\n");
-                //     speedPIDThread->start(&VPID);
-                //     break;
-                // case 'I':
-                //     speedTi = charsToFloat(command, 1, index - 1);
-                //     speedController.setTunings(speedKc, speedTi, speedTd);
-                //     // Start interrupts
-                //     speedTimer.reset();
-                //     speedTimer.start();
-                //     I3.enable_irq();
-                //     // Begin!
-                //     fixedSpeedWait = 8.0f;
-                //     // Run threads.
-                //     pc.printf("Starting Motor Thread\r\n");
-                //     motorThread->start(&fixedSpeed);
-                //     pc.printf("Starting VPID Thread.\r\n");
-                //     speedPIDThread->start(&VPID);
-                //     break;
-                // case 'D':
-                //     speedTd = charsToFloat(command, 1, index - 1);
-                //     speedController.setTunings(speedKc, speedTi, speedTd);
-                //     // Start interrupts
-                //     speedTimer.reset();
-                //     speedTimer.start();
-                //     I3.enable_irq();
-                //     // Begin!
-                //     fixedSpeedWait = 8.0f;
-                //     // Run threads.
-                //     pc.printf("Starting Motor Thread\r\n");
-                //     motorThread->start(&fixedSpeed);
-                //     pc.printf("Starting VPID Thread.\r\n");
-                //     speedPIDThread->start(&VPID);
-                //     break;
-
+//                    Calibration speedKc, speedTi, speedTd
+                case 'K':
+                    speedKc = charsToFloat(command, 1, index - 1);
+                    speedController.setTunings(speedKc, speedTi, speedTd);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
+//                    I3.enable_irq();
+                    // Begin!
+//                    fixedSpeedWait = 8.0f;
+                    // Run threads.
+//                    pc.printf("Starting Motor Thread\r\n");
+//                    motorThread->start(&fixedSpeed);
+                    pc.printf("Starting VPID Thread.\r\n");
+                    speedPIDThread->start(&VPID);
+                    break;
+                case 'I':
+                    speedTi = charsToFloat(command, 1, index - 1);
+                    speedController.setTunings(speedKc, speedTi, speedTd);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
+                    I3.enable_irq();
+                    // Begin!
+//                    fixedSpeedWait = 8.0f;
+                    // Run threads.
+//                    pc.printf("Starting Motor Thread\r\n");
+//                    motorThread->start(&fixedSpeed);
+                    pc.printf("Starting VPID Thread.\r\n");
+                    speedPIDThread->start(&VPID);
+                    break;
+                case 'D':
+                    speedTd = charsToFloat(command, 1, index - 1);
+                    speedController.setTunings(speedKc, speedTi, speedTd);
+                    // Start interrupts
+                    speedTimer.reset();
+                    speedTimer.start();
+                    I3.enable_irq();
+                    // Begin!
+//                    fixedSpeedWait = 8.0f;
+                    // Run threads.
+//                    pc.printf("Starting Motor Thread\r\n");
+//                    motorThread->start(&fixedSpeed);
+                    pc.printf("Starting VPID Thread.\r\n");
+                    speedPIDThread->start(&VPID);
+                    break;
+/*
                 case 'K':
                     noRevs = false;
                     controlKc = charsToFloat(command, 1, index - 1);
@@ -763,7 +806,7 @@ int main()
                     motorThread->start(&fixedSpeedRevolutions);
                     pc.printf("Starting PPID Thread.\r\n");
                     revolutionPIDThread->start(&PPID);
-                    break;
+                    break;*/
 
                 case 'J':
                     noRevs = false;
@@ -819,22 +862,22 @@ int main()
                     pc.printf("Starting PPID Thread.\r\n");
                     revolutionPIDThread->start(&PPID);
 
-                // Braking function
-                // case 'B':
-                //     brakeRevCount = 0;
-                //     I3.mode(PullNone);
-                //     I3.rise(&brakeCount);
-                //     I3.enable_irq();
-                //     motorHigh = CWHigh[1];
-                //     L1L = CWL1L[1];
-                //     L2L = CWL2L[1];
-                //     L3L = CWL3L[1];
-                //     break;
-                // case 'C':
-                //     pc.printf("Brake Count: %d\n\r", brakeRevCount);
-                //     break;
+                    // Braking function
+                    // case 'B':
+                    //     brakeRevCount = 0;
+                    //     I3.mode(PullNone);
+                    //     I3.rise(&brakeCount);
+                    //     I3.enable_irq();
+                    //     motorHigh = CWHigh[1];
+                    //     L1L = CWL1L[1];
+                    //     L2L = CWL2L[1];
+                    //     L3L = CWL3L[1];
+                    //     break;
+                    // case 'C':
+                    //     pc.printf("Brake Count: %d\n\r", brakeRevCount);
+                    //     break;
 
-                // If something weird comes along.
+                    // If something weird comes along.
                 default:
                     // Commands to kill all threads
                     // Reset all values to zero
