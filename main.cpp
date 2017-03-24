@@ -81,8 +81,8 @@ volatile int8_t notePointer = 0;
 //PID controller configurations
 volatile float speedKc = 1.5;
 volatile float speedTi = 0.8;
-volatile float speedTd = 1.5;
-volatile float controlKc = 10.0;
+volatile float speedTd = 2.5;
+volatile float controlKc = 20.0;
 volatile float controlTi = 0.0;
 volatile float controlTd = 1.0;
 
@@ -523,6 +523,7 @@ int main()
     speedController.setInputLimits(0.0, 200.0);
     speedController.setOutputLimits(0.0, 1.0);
     positionController.setInputLimits(0.0, 2000.0);
+    positionController.setOutputLimits(0.0, 1.0);
 
     // Interrrupt
 //    I3.mode(PullNone);
@@ -547,6 +548,9 @@ int main()
             // Remove interrupts
 //            I3.rise(&rps);
 
+            L1L.period_us(125);
+            L2L.period_us(125);
+            L3L.period_us(125);
 
             I1.disable_irq();
             I2.disable_irq();
@@ -645,8 +649,8 @@ int main()
                         desiredRevolutions = abs(desiredRevolutions);
                         // Set values
                         limitRevolutions = floor(desiredRevolutions - MAXIMUMBRAKE * (desiredSpeedValue/MAXIMUMSPEED));
-                        if(desiredRevolutions - limitRevolutions < 10)
-                            limitRevolutions = desiredRevolutions - 10;
+                        if(desiredRevolutions - limitRevolutions < 40)
+                            limitRevolutions = desiredRevolutions - 40;
                         if (limitRevolutions < 0)
                             limitRevolutions = 0;
                         revCounter = 0;
