@@ -39,6 +39,9 @@ State   L1  L2  L3
 7       -   -   -
 */
 
+// report diagnostics pin
+DigitalOut report(D13);
+
 // Photointerrupter inputs
 InterruptIn I1(I1pin);
 InterruptIn I2(I2pin);
@@ -126,7 +129,7 @@ Thread* revolutionPIDThread;
 
 void motorOut(int8_t driveState)
 {
-
+    
     //Lookup the output byte from the drive state.
     int8_t driveOut = driveTable[driveState & 0x07];
 
@@ -145,10 +148,13 @@ void motorOut(int8_t driveState)
     if (driveOut & 0x08) L2H.write(0);
     if (driveOut & 0x10) L3L.write(pwm);
     if (driveOut & 0x20) L3H.write(0);
+
+   // report = 0;
 }
 
 void state_interrupt()
 {
+  //  report = 1;
     // set next rotor state
     intState=stateMap[I1 + 2*I2 + 4*I3];
     motorOut((intState-orgState+lead+6)%6);
@@ -156,6 +162,7 @@ void state_interrupt()
 
 void state_interrupt_speed()
 {
+  //  report = 1;
     // Calculation of speed.
     speedTimer.stop();
     revTimer = speedTimer.read_ms();
@@ -181,13 +188,16 @@ void state_interrupt_speed()
 void playNotes()
 {
     while(1) {
+       // report = 0;
         int currentPeriod = frequencyPeriodTable[noteArray[notePointer]];
         int currentTime = timeArray[notePointer];
         L1L.period_us(currentPeriod);
         L2L.period_us(currentPeriod);
         L3L.period_us(currentPeriod);
         notePointer = (notePointer + 1) % numberNotes;
+      //  report = 1;
         Thread::wait(currentTime);
+        
     }
 }
 
@@ -195,12 +205,14 @@ void playNotes()
 void VPID()
 {
     while(1) {
+        report = 0;
         //1000ms over the timer to calculate the speed, moving average with previous one.
         if(revTimer != 0)
             measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
         speedController.setSetPoint(desiredSpeedValue);
         speedController.setProcessValue(measuredSpeed);
         speedPwm = speedController.compute();
+        report = 1;
         Thread::wait(20);
     }
 }
@@ -209,6 +221,7 @@ void VPID()
 void PPID()
 {
     while(1) {
+      //  report = 0;
         positionController.setSetPoint(desiredRevolutions);
         positionController.setProcessValue(revCounter);
         positionPwm = positionController.compute();
@@ -395,6 +408,7 @@ void resetThreads()
 // Advances states at specified rate.
 void fixedSpeedRevolutions()
 {
+  //  report = 0;
     int8_t rotState = 0;
     int8_t rotStateOld = 0;
     while(1) {
@@ -485,6 +499,7 @@ int main()
     I2.disable_irq();
     I3.disable_irq();
     while(1) {
+      //  report = 1;
         // If there's a character to read from the serial port
         if (pc.readable()) {
             // Off
