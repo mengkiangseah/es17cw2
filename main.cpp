@@ -154,7 +154,7 @@ void motorOut(int8_t driveState)
 
 void state_interrupt()
 {
-  //  report = 1;
+  //  report = 0;
     // set next rotor state
     intState=stateMap[I1 + 2*I2 + 4*I3];
     motorOut((intState-orgState+lead+6)%6);
@@ -162,7 +162,7 @@ void state_interrupt()
 
 void state_interrupt_speed()
 {
-  //  report = 1;
+  //  report = 0;
     // Calculation of speed.
     speedTimer.stop();
     revTimer = speedTimer.read_ms();
@@ -205,14 +205,14 @@ void playNotes()
 void VPID()
 {
     while(1) {
-        report = 0;
+        report = !report;
         //1000ms over the timer to calculate the speed, moving average with previous one.
         if(revTimer != 0)
             measuredSpeed = 0.5*measuredSpeed + 500.0/float(revTimer);
         speedController.setSetPoint(desiredSpeedValue);
         speedController.setProcessValue(measuredSpeed);
         speedPwm = speedController.compute();
-        report = 1;
+        pc.printf("%0.3f %3.2f\r\n ", speedPwm, measuredSpeed);
         Thread::wait(20);
     }
 }
@@ -221,10 +221,11 @@ void VPID()
 void PPID()
 {
     while(1) {
-      //  report = 0;
+     //   report = 0;
         positionController.setSetPoint(desiredRevolutions);
         positionController.setProcessValue(revCounter);
         positionPwm = positionController.compute();
+       // report = 1;
         Thread::wait(20);
     }
 }
@@ -408,10 +409,11 @@ void resetThreads()
 // Advances states at specified rate.
 void fixedSpeedRevolutions()
 {
-  //  report = 0;
+    
     int8_t rotState = 0;
     int8_t rotStateOld = 0;
     while(1) {
+      //  report = 0;
         // read current state of rotor
         rotState = stateMap[I1 + I2*2 + I3*4];
         // if state has changed, set the state to the next state
@@ -445,7 +447,7 @@ void fixedSpeedRevolutions()
                 L3L = L3L/2.0;
             }
         }
-
+       // report = 1;
         Thread::wait(1);
     }
 }
