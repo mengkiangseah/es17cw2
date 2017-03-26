@@ -12,7 +12,7 @@ spd20 = raw(2:end,8);
 spd30 = raw(2:end,10);
 spd40 = raw(2:end,12);
 
-Ts = 1/(15.4*2);
+Ts = 1/(15.4*10);
 time = 1:Ts:100;
 
 %% extract pwm and velocity data
@@ -103,6 +103,8 @@ plot(time(1:length(pwm30)), pwm30,'c');
 plot(time(1:length(pwm40)), pwm40,'k');
 title('PWM duty');
 legend('5','10','15','20','30','40');
+ylabel('PWM duty');
+xlabel('time [s]');
 saveas(gcf,'PWM_pos.png');
 
 figure
@@ -123,6 +125,8 @@ hline(40,'k:');
 title('velocity')
 legend('5','10','15','20','30','40');
 ylim([0,45]);
+ylabel('speed [rps]');
+xlabel('time [s]');
 saveas(gcf,'velocity_pos.png');
 
 
@@ -256,6 +260,8 @@ plot(time(1:length(pwm40)), pwm40);
 
 title('PWM duty');
 legend('5','10','15','20','30','40','50','60');
+ylabel('PWM duty');
+xlabel('time [s]');
 saveas(gcf,'PWM_neg.png');
 
 figure
@@ -281,4 +287,6 @@ hline(60,':');
 title('velocity')
 legend('5','10','15','20','30','40','50','60');
 ylim([0,75]);
+ylabel('speed [rps]');
+xlabel('time [s]');
 saveas(gcf,'velocity_neg.png');
